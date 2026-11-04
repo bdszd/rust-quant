@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/backtest-core",
+    "crates/trading-core",
+    "apps/backend",
+]
+resolver = "3"
