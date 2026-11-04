@@ -191,8 +191,18 @@
   },
   "active": "f748328c9daf4dc6",
   "lastOpenFiles": [
+    "target/debug/deps/quant_backend-65df0904812fce67",
+    "target/debug/incremental/quant_backend-3d8vzxl868n3e/s-hnu6if9xl1-0kxt1qh-8ub2y6qd7b6t00t8db1qt80ex/work-products.bin",
+    "target/debug/incremental/quant_backend-3d8vzxl868n3e/s-hnu6if9xl1-0kxt1qh-8ub2y6qd7b6t00t8db1qt80ex/query-cache.bin",
+    "target/debug/incremental/quant_backend-3d8vzxl868n3e/s-hnu6if9xl1-0kxt1qh-8ub2y6qd7b6t00t8db1qt80ex/f1pkjd3g3r9crkw5p6ixma9gg.o",
+    "target/debug/incremental/quant_backend-3d8vzxl868n3e/s-hnu6if9xl1-0kxt1qh-8ub2y6qd7b6t00t8db1qt80ex/ezgtq76lmfvp4u7g5tfnq4n31.o",
+    "target/debug/incremental/quant_backend-3d8vzxl868n3e/s-hnu6if9xl1-0kxt1qh-8ub2y6qd7b6t00t8db1qt80ex/eydpy34jz16nxim93k5rch5a5.o",
+    "target/debug/incremental/quant_backend-3d8vzxl868n3e/s-hnu6if9xl1-0kxt1qh-8ub2y6qd7b6t00t8db1qt80ex/epfy4x6nbywv4txyiwvb73hv5.o",
+    "target/debug/incremental/quant_backend-3d8vzxl868n3e/s-hnu6if9xl1-0kxt1qh-8ub2y6qd7b6t00t8db1qt80ex/eks6i16rsjg5ltiqthk8fkozb.o",
+    "target/debug/incremental/quant_backend-3d8vzxl868n3e/s-hnu6if9xl1-0kxt1qh-8ub2y6qd7b6t00t8db1qt80ex/ehpiflo9zpjcet7nawjkbqrpk.o",
+    "target/debug/incremental/quant_backend-3d8vzxl868n3e/s-hnu6if9xl1-0kxt1qh-8ub2y6qd7b6t00t8db1qt80ex/e9silfrr7p4bscyrot1iov0fp.o",
+    "target/debug/incremental/quant_backend-3d8vzxl868n3e/s-hnu6if9xl1-0kxt1qh-8ub2y6qd7b6t00t8db1qt80ex/e3gjg5fb2xskwwvlyp6h2iaa3.o",
     "回测系统.md",
-    "项目总览.md",
-    "doc"
+    "项目总览.md"
   ]
 }

@@ -37,11 +37,11 @@ impl Order {
             return Err("订单数量必须大于 0".to_string());
         }
 
-        if let Some(price) = self.limit_price {
-            if !price.is_finite() || price <= 0.0 {
+        if let Some(price) = self.limit_price 
+            && (!price.is_finite() || price <= 0.0) {
                 return Err("限价必须是有限的正数".to_string());
             }
-        }
+        
 
         Ok(())
     }
