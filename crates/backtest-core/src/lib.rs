@@ -6,15 +6,6 @@ pub mod indicators;
 pub mod portfolio;
 pub mod strategy;
 
-#[path = "data-clean/mod.rs"]
-pub mod data_clean;
-
-pub use data_clean::{CleaningResult, DataQualityReport, RejectedRecord, load_clean_bars};
-
-pub use data_clean::storage::{
-    StoragePaths, load_cleaned_bars, load_quality_report, save_cleaning_result,
-};
-
 pub use data::{Bar, load_bars};
 pub use engine::{BacktestConfig, BacktestResult, run};
 pub use execution::{ExecutionMode, Trade};
