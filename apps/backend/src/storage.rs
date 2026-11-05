@@ -1,118 +1,17 @@
 use crate::tasks::{ApiBacktestResult, BacktestJob, BacktestTask, TaskStatus};
 
-use sqlx::{
-    Row, SqlitePool,
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
-};
+use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 
-use std::{path::Path, time::Duration};
-
-pub async fn connect(database_path: &Path) -> Result<SqlitePool, sqlx::Error> {
-    let options = SqliteConnectOptions::new()
-        .filename(database_path)
-        .create_if_missing(true)
-        .journal_mode(SqliteJournalMode::Wal)
-        .busy_timeout(Duration::from_secs(5));
-
-    SqlitePoolOptions::new()
-        .max_connections(5)
-        .connect_with(options)
+/// 建立 PostgreSQL 连接池。
+///
+/// DATABASE_URL 示例：
+/// postgres://postgres:postgres@localhost:5432/rust_quant
+pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
+    PgPoolOptions::new()
+        .max_connections(10)
+        .acquire_timeout(std::time::Duration::from_secs(5))
+        .connect(database_url)
         .await
-}
-
-pub async fn init(pool: &SqlitePool) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS backtest_tasks (
-            id TEXT PRIMARY KEY,
-            dataset TEXT NOT NULL,
-            strategy TEXT NOT NULL,
-            short_window INTEGER,
-            long_window INTEGER,
-            job_json TEXT,
-            status TEXT NOT NULL,
-            result_json TEXT,
-            error TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            started_at TEXT,
-            finished_at TEXT,
-            execution_duration_ms INTEGER
-        )
-        "#,
-    )
-    .execute(pool)
-    .await?;
-
-    // 兼容旧数据库：检查 job_json 列是否已经存在。
-    let job_exists: i64 = sqlx::query_scalar(
-        r#"
-        SELECT COUNT(*)
-        FROM pragma_table_info('backtest_tasks')
-        WHERE name = 'job_json'
-        "#,
-    )
-    .fetch_one(pool)
-    .await?;
-
-    if job_exists == 0 {
-        sqlx::query("ALTER TABLE backtest_tasks ADD COLUMN job_json TEXT")
-            .execute(pool)
-            .await?;
-    }
-
-    // 兼容旧数据库：检查 started_at 列。
-    let start_exists: i64 = sqlx::query_scalar(
-        r#"
-        SELECT COUNT(*)
-        FROM pragma_table_info('backtest_tasks')
-        WHERE name = 'started_at'
-        "#,
-    )
-    .fetch_one(pool)
-    .await?;
-
-    if start_exists == 0 {
-        sqlx::query("ALTER TABLE backtest_tasks ADD COLUMN started_at TEXT")
-            .execute(pool)
-            .await?;
-    }
-
-    // 兼容旧数据库：检查 finished_at 列。
-    let finish_exists: i64 = sqlx::query_scalar(
-        r#"
-        SELECT COUNT(*)
-        FROM pragma_table_info('backtest_tasks')
-        WHERE name = 'finished_at'
-        "#,
-    )
-    .fetch_one(pool)
-    .await?;
-
-    if finish_exists == 0 {
-        sqlx::query("ALTER TABLE backtest_tasks ADD COLUMN finished_at TEXT")
-            .execute(pool)
-            .await?;
-    }
-
-    // 兼容旧数据库：检查 execution_duration_ms 列。
-    let duration_exists: i64 = sqlx::query_scalar(
-        r#"
-        SELECT COUNT(*)
-        FROM pragma_table_info('backtest_tasks')
-        WHERE name = 'execution_duration_ms'
-        "#,
-    )
-    .fetch_one(pool)
-    .await?;
-
-    if duration_exists == 0 {
-        sqlx::query("ALTER TABLE backtest_tasks ADD COLUMN execution_duration_ms INTEGER")
-            .execute(pool)
-            .await?;
-    }
-
-    Ok(())
 }
 
 fn status_to_str(status: TaskStatus) -> &'static str {
@@ -136,7 +35,7 @@ fn status_from_str(status: &str) -> Result<TaskStatus, String> {
 
 /// 创建任务时，同时保存任务展示信息和完整执行参数。
 pub async fn insert_task(
-    pool: &SqlitePool,
+    pool: &PgPool,
     task: &BacktestTask,
     job: &BacktestJob,
 ) -> Result<(), String> {
@@ -155,14 +54,14 @@ pub async fn insert_task(
             result_json,
             error
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL)
         "#,
     )
     .bind(&task.id)
     .bind(&task.dataset)
     .bind(&task.strategy)
-    .bind(task.short_window.map(|v| v as i64))
-    .bind(task.long_window.map(|v| v as i64))
+    .bind(task.short_window.map(|v| v as i32))
+    .bind(task.long_window.map(|v| v as i32))
     .bind(job_json)
     .bind(status_to_str(task.status))
     .execute(pool)
@@ -176,18 +75,18 @@ pub async fn insert_task(
 ///
 /// 只有状态仍然是 queued 的任务才能被认领。
 /// 认领成功时记录 started_at。
-pub async fn claim_task(pool: &SqlitePool, id: &str) -> Result<bool, sqlx::Error> {
+pub async fn claim_task(pool: &PgPool, id: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         r#"
         UPDATE backtest_tasks
         SET status = 'running',
-            started_at = CURRENT_TIMESTAMP,
+            started_at = NOW(),
             finished_at = NULL,
             execution_duration_ms = NULL,
             result_json = NULL,
             error = NULL,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+            updated_at = NOW()
+        WHERE id = $1
           AND status = 'queued'
           AND job_json IS NOT NULL
         "#,
@@ -201,8 +100,9 @@ pub async fn claim_task(pool: &SqlitePool, id: &str) -> Result<bool, sqlx::Error
 
 /// 服务启动时，将上次进程遗留的 running 任务重新设为 queued。
 ///
-/// 注意：当前方案假设同一时间只有一个服务实例负责这张任务表。
-pub async fn reset_running_tasks(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
+/// 当前阶段仍按单个 Backend 实例运行；引入多实例 Worker 后，
+/// 将由任务租约/超时恢复机制替代全量重置。
+pub async fn reset_running_tasks(pool: &PgPool) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         r#"
         UPDATE backtest_tasks
@@ -211,7 +111,7 @@ pub async fn reset_running_tasks(pool: &SqlitePool) -> Result<u64, sqlx::Error> 
             finished_at = NULL,
             execution_duration_ms = NULL,
             error = NULL,
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = NOW()
         WHERE status = 'running'
           AND job_json IS NOT NULL
         "#,
@@ -223,7 +123,7 @@ pub async fn reset_running_tasks(pool: &SqlitePool) -> Result<u64, sqlx::Error> 
 }
 
 /// 从数据库读取所有可以恢复执行的任务。
-pub async fn list_queued_jobs(pool: &SqlitePool) -> Result<Vec<BacktestJob>, String> {
+pub async fn list_queued_jobs(pool: &PgPool) -> Result<Vec<BacktestJob>, String> {
     let rows = sqlx::query(
         r#"
         SELECT job_json
@@ -253,13 +153,13 @@ pub async fn list_queued_jobs(pool: &SqlitePool) -> Result<Vec<BacktestJob>, Str
     Ok(jobs)
 }
 
-pub async fn get_task(pool: &SqlitePool, id: &str) -> Result<Option<BacktestTask>, String> {
+pub async fn get_task(pool: &PgPool, id: &str) -> Result<Option<BacktestTask>, String> {
     let row = sqlx::query(
         r#"
         SELECT id, dataset, strategy, short_window, long_window,
                status, result_json, error, execution_duration_ms
         FROM backtest_tasks
-        WHERE id = ?
+        WHERE id = $1
         "#,
     )
     .bind(id)
@@ -284,11 +184,11 @@ pub async fn get_task(pool: &SqlitePool, id: &str) -> Result<Option<BacktestTask
         .transpose()
         .map_err(|e| format!("解析数据库中的回测结果失败：{e}"))?;
 
-    let short_window: Option<i64> = row
+    let short_window: Option<i32> = row
         .try_get("short_window")
         .map_err(|e| format!("读取短期窗口失败：{e}"))?;
 
-    let long_window: Option<i64> = row
+    let long_window: Option<i32> = row
         .try_get("long_window")
         .map_err(|e| format!("读取长期窗口失败：{e}"))?;
 
@@ -319,7 +219,7 @@ pub async fn get_task(pool: &SqlitePool, id: &str) -> Result<Option<BacktestTask
 
 /// 保存成功结果和实际执行耗时。
 pub async fn mark_succeeded(
-    pool: &SqlitePool,
+    pool: &PgPool,
     id: &str,
     result: &ApiBacktestResult,
     execution_duration_ms: i64,
@@ -331,12 +231,12 @@ pub async fn mark_succeeded(
         r#"
         UPDATE backtest_tasks
         SET status = 'succeeded',
-            result_json = ?,
+            result_json = $1,
             error = NULL,
-            finished_at = CURRENT_TIMESTAMP,
-            execution_duration_ms = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+            finished_at = NOW(),
+            execution_duration_ms = $2,
+            updated_at = NOW()
+        WHERE id = $3
           AND status = 'running'
         "#,
     )
@@ -354,7 +254,7 @@ pub async fn mark_succeeded(
 ///
 /// 如果线程异常，可能没有拿到有效耗时，此时传入 None。
 pub async fn mark_failed(
-    pool: &SqlitePool,
+    pool: &PgPool,
     id: &str,
     message: &str,
     execution_duration_ms: Option<i64>,
@@ -364,11 +264,11 @@ pub async fn mark_failed(
         UPDATE backtest_tasks
         SET status = 'failed',
             result_json = NULL,
-            error = ?,
-            finished_at = CURRENT_TIMESTAMP,
-            execution_duration_ms = ?,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+            error = $1,
+            finished_at = NOW(),
+            execution_duration_ms = $2,
+            updated_at = NOW()
+        WHERE id = $3
           AND status = 'running'
         "#,
     )
