@@ -36,13 +36,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     std::fs::create_dir_all(&data_dir)?;
 
-    // 2. 初始化 SQLite。
-    let db_path = env::var_os("RUST_QUANT_DB_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("quant-backend.sqlite3"));
+    // 2. 连接 PostgreSQL 并执行数据库迁移。
+    let database_url = env::var("DATABASE_URL")
+        .expect("必须设置 DATABASE_URL，例如 postgres://postgres:postgres@localhost:5432/rust_quant");
 
-    let db = storage::connect(&db_path).await?;
-    storage::init(&db).await?;
+    let db = storage::connect(&database_url).await?;
+    sqlx::migrate!("./migrations").run(&db).await?;
 
     // 3. 恢复上次进程遗留的 running 任务。
     let reset_count = storage::reset_running_tasks(&db).await?;
@@ -50,7 +49,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 4. 创建有界任务队列。
     let (task_sender, receiver) = mpsc::channel::<BacktestJob>(QUEUE_CAPACITY);
-
     let receiver = Arc::new(AsyncMutex::new(receiver));
 
     // 5. 启动固定数量的 Worker，并保留 JoinHandle。
@@ -69,9 +67,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         worker_handles.push(handle);
     }
 
-    //6.create a oneshot channel for dispatcher
+    // 6. 启动 Dispatcher。
     let (dispatcher_shutdown_tx, dispatcher_shutdown_rx) = oneshot::channel();
-
     let db_for_dispatch = db.clone();
 
     let dispatcher_handle = tokio::spawn(async move {
@@ -92,27 +89,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 9. 启动 HTTP 服务，监听 Ctrl+C。
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8000").await?;
-
     println!("Backend listening on http://127.0.0.1:8000");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
-    // 10. HTTP 服务退出后，等待所有 Worker 完成剩余任务。
-    //
-    // app 已经释放 AppState，tas_sender 随之释放。
-    // 当队列中的任务全部消费完，Receiver.recv() 返回 None。
+    // 10. HTTP 服务退出后，等待 Worker 完成剩余任务。
     println!("HTTP 服务已关闭");
-
     let _ = dispatcher_shutdown_tx.send(());
 
     if let Err(error) = dispatcher_handle.await {
-        eprintln!("Dispatcher 异常退出 : {error}");
+        eprintln!("Dispatcher 异常退出：{error}");
     }
 
     println!("等待 Worker 完成剩余任务……");
-
     for handle in worker_handles {
         if let Err(error) = handle.await {
             eprintln!("Worker 线程异常退出：{error}");
@@ -120,7 +111,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("所有 Worker 已退出，程序正常结束");
-
     Ok(())
 }
 
