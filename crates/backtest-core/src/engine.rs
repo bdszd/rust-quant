@@ -1,4 +1,3 @@
-
 use crate::analytics::calculate_metrics;
 use crate::data::Bar;
 use crate::execution::{ExecutionMode, ExecutionModel, Trade};
@@ -25,14 +24,12 @@ impl BacktestConfig {
         );
 
         assert!(
-            self.commission_rate.is_finite()
-                && (0.0..1.0).contains(&self.commission_rate),
+            self.commission_rate.is_finite() && (0.0..1.0).contains(&self.commission_rate),
             "手续费率必须大于等于 0 且小于 1"
         );
 
         assert!(
-            self.slippage_rate.is_finite()
-                && (0.0..1.0).contains(&self.slippage_rate),
+            self.slippage_rate.is_finite() && (0.0..1.0).contains(&self.slippage_rate),
             "滑点率必须大于等于 0 且小于 1"
         );
     }
@@ -62,13 +59,11 @@ pub fn run<S: Strategy + ?Sized>(
 
     let mut portfolio = Portfolio::new(config.initial_cash);
 
-    let mut execution =
-        ExecutionModel::new(config.commission_rate, config.slippage_rate);
+    let mut execution = ExecutionModel::new(config.commission_rate, config.slippage_rate);
 
     let mut history = Vec::with_capacity(bars.len());
     let mut pending_signal = Signal::Hold;
 
-    
     for bar in bars {
         // 时间点 1：根据执行模式处理上一交易日的信号。
         let execution_price = match config.execution_mode {
@@ -76,13 +71,7 @@ pub fn run<S: Strategy + ?Sized>(
             ExecutionMode::NextClose => bar.close,
         };
 
-
-        execution.execute(
-            &mut portfolio,
-            pending_signal,
-            &bar.date,
-            execution_price,
-        );
+        execution.execute(&mut portfolio, pending_signal, &bar.date, execution_price);
 
         // 时间点 2：记录当天收盘账户状态。
         history.push(portfolio.snapshot(&bar.date, bar.close));

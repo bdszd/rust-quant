@@ -1,19 +1,8 @@
-
-use crate::tasks::{
-    ApiBacktestResult,
-    BacktestJob,
-    BacktestTask,
-    TaskStatus,
-};
+use crate::tasks::{ApiBacktestResult, BacktestJob, BacktestTask, TaskStatus};
 
 use sqlx::{
-    Row,
-    SqlitePool,
-    sqlite::{
-        SqliteConnectOptions,
-        SqliteJournalMode,
-        SqlitePoolOptions,
-    },
+    Row, SqlitePool,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
 };
 
 use std::{path::Path, time::Duration};
@@ -67,11 +56,9 @@ pub async fn init(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     .await?;
 
     if job_exists == 0 {
-        sqlx::query(
-            "ALTER TABLE backtest_tasks ADD COLUMN job_json TEXT",
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("ALTER TABLE backtest_tasks ADD COLUMN job_json TEXT")
+            .execute(pool)
+            .await?;
     }
 
     // 兼容旧数据库：检查 started_at 列。
@@ -86,11 +73,9 @@ pub async fn init(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     .await?;
 
     if start_exists == 0 {
-        sqlx::query(
-            "ALTER TABLE backtest_tasks ADD COLUMN started_at TEXT",
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("ALTER TABLE backtest_tasks ADD COLUMN started_at TEXT")
+            .execute(pool)
+            .await?;
     }
 
     // 兼容旧数据库：检查 finished_at 列。
@@ -105,11 +90,9 @@ pub async fn init(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     .await?;
 
     if finish_exists == 0 {
-        sqlx::query(
-            "ALTER TABLE backtest_tasks ADD COLUMN finished_at TEXT",
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("ALTER TABLE backtest_tasks ADD COLUMN finished_at TEXT")
+            .execute(pool)
+            .await?;
     }
 
     // 兼容旧数据库：检查 execution_duration_ms 列。
@@ -124,11 +107,9 @@ pub async fn init(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     .await?;
 
     if duration_exists == 0 {
-        sqlx::query(
-            "ALTER TABLE backtest_tasks ADD COLUMN execution_duration_ms INTEGER",
-        )
-        .execute(pool)
-        .await?;
+        sqlx::query("ALTER TABLE backtest_tasks ADD COLUMN execution_duration_ms INTEGER")
+            .execute(pool)
+            .await?;
     }
 
     Ok(())
@@ -159,8 +140,7 @@ pub async fn insert_task(
     task: &BacktestTask,
     job: &BacktestJob,
 ) -> Result<(), String> {
-    let job_json = serde_json::to_string(job)
-        .map_err(|e| format!("序列化回测任务失败：{e}"))?;
+    let job_json = serde_json::to_string(job).map_err(|e| format!("序列化回测任务失败：{e}"))?;
 
     sqlx::query(
         r#"
@@ -196,10 +176,7 @@ pub async fn insert_task(
 ///
 /// 只有状态仍然是 queued 的任务才能被认领。
 /// 认领成功时记录 started_at。
-pub async fn claim_task(
-    pool: &SqlitePool,
-    id: &str,
-) -> Result<bool, sqlx::Error> {
+pub async fn claim_task(pool: &SqlitePool, id: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         r#"
         UPDATE backtest_tasks
@@ -225,9 +202,7 @@ pub async fn claim_task(
 /// 服务启动时，将上次进程遗留的 running 任务重新设为 queued。
 ///
 /// 注意：当前方案假设同一时间只有一个服务实例负责这张任务表。
-pub async fn reset_running_tasks(
-    pool: &SqlitePool,
-) -> Result<u64, sqlx::Error> {
+pub async fn reset_running_tasks(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         r#"
         UPDATE backtest_tasks
@@ -248,9 +223,7 @@ pub async fn reset_running_tasks(
 }
 
 /// 从数据库读取所有可以恢复执行的任务。
-pub async fn list_queued_jobs(
-    pool: &SqlitePool,
-) -> Result<Vec<BacktestJob>, String> {
+pub async fn list_queued_jobs(pool: &SqlitePool) -> Result<Vec<BacktestJob>, String> {
     let rows = sqlx::query(
         r#"
         SELECT job_json
@@ -271,8 +244,8 @@ pub async fn list_queued_jobs(
             .try_get("job_json")
             .map_err(|e| format!("读取任务参数失败：{e}"))?;
 
-        let job: BacktestJob = serde_json::from_str(&job_json)
-            .map_err(|e| format!("解析待恢复任务失败：{e}"))?;
+        let job: BacktestJob =
+            serde_json::from_str(&job_json).map_err(|e| format!("解析待恢复任务失败：{e}"))?;
 
         jobs.push(job);
     }
@@ -280,10 +253,7 @@ pub async fn list_queued_jobs(
     Ok(jobs)
 }
 
-pub async fn get_task(
-    pool: &SqlitePool,
-    id: &str,
-) -> Result<Option<BacktestTask>, String> {
+pub async fn get_task(pool: &SqlitePool, id: &str) -> Result<Option<BacktestTask>, String> {
     let row = sqlx::query(
         r#"
         SELECT id, dataset, strategy, short_window, long_window,
@@ -323,8 +293,8 @@ pub async fn get_task(
         .map_err(|e| format!("读取长期窗口失败：{e}"))?;
 
     let execution_duration_ms: Option<i64> = row
-    .try_get("execution_duration_ms")
-    .map_err(|e| format!("读取执行耗时失败：{e}"))?;
+        .try_get("execution_duration_ms")
+        .map_err(|e| format!("读取执行耗时失败：{e}"))?;
 
     Ok(Some(BacktestTask {
         id: row
@@ -354,8 +324,8 @@ pub async fn mark_succeeded(
     result: &ApiBacktestResult,
     execution_duration_ms: i64,
 ) -> Result<(), String> {
-    let result_json = serde_json::to_string(result)
-        .map_err(|e| format!("序列化回测结果失败：{e}"))?;
+    let result_json =
+        serde_json::to_string(result).map_err(|e| format!("序列化回测结果失败：{e}"))?;
 
     sqlx::query(
         r#"

@@ -1,7 +1,7 @@
 use crate::portfolio::Portfolio;
 use crate::strategy::Signal;
+use serde::{Deserialize, Serialize};
 use trading_core::{Fill, Side};
-use serde::{Serialize, Deserialize};
 
 /// 回测中的模拟成交时机。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

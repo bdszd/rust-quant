@@ -1,4 +1,3 @@
-
 use crate::{
     backtest::execute_job,
     storage,
@@ -30,10 +29,7 @@ impl RetryDelay {
     async fn wait(&mut self) {
         tokio::time::sleep(self.current).await;
 
-        self.current = cmp::min(
-            self.current.saturating_mul(2),
-            MAX_RETRY_DELAY,
-        );
+        self.current = cmp::min(self.current.saturating_mul(2), MAX_RETRY_DELAY);
     }
 }
 
@@ -52,24 +48,13 @@ async fn persist_succeeded(
     let mut retry = RetryDelay::new();
 
     loop {
-        match storage::mark_succeeded(
-            db,
-            id,
-            result,
-            execution_duration_ms,
-        )
-        .await
-        {
+        match storage::mark_succeeded(db, id, result, execution_duration_ms).await {
             Ok(()) => {
-                println!(
-                    "任务 {id} 执行成功，结果已保存，执行耗时：{execution_duration_ms} ms"
-                );
+                println!("任务 {id} 执行成功，结果已保存，执行耗时：{execution_duration_ms} ms");
                 return;
             }
             Err(error) => {
-                eprintln!(
-                    "保存任务 {id} 的执行结果失败：{error}，稍后重试"
-                );
+                eprintln!("保存任务 {id} 的执行结果失败：{error}，稍后重试");
                 retry.wait().await;
             }
         }
@@ -86,32 +71,20 @@ async fn persist_failed(
     let mut retry = RetryDelay::new();
 
     loop {
-        match storage::mark_failed(
-            db,
-            id,
-            message,
-            execution_duration_ms,
-        )
-        .await
-        {
+        match storage::mark_failed(db, id, message, execution_duration_ms).await {
             Ok(()) => {
                 println!("任务 {id} 已记录失败状态");
                 return;
             }
             Err(error) => {
-                eprintln!(
-                    "保存任务 {id} 的失败状态失败：{error}，稍后重试"
-                );
+                eprintln!("保存任务 {id} 的失败状态失败：{error}，稍后重试");
                 retry.wait().await;
             }
         }
     }
 }
 
-pub async fn worker_loop(
-    receiver: Arc<AsyncMutex<mpsc::Receiver<BacktestJob>>>,
-    db: SqlitePool,
-) {
+pub async fn worker_loop(receiver: Arc<AsyncMutex<mpsc::Receiver<BacktestJob>>>, db: SqlitePool) {
     loop {
         // 只在接收任务时持有 Receiver 锁。
         // 收到任务后立即释放锁，不影响其他 Worker 接收任务。
@@ -142,16 +115,12 @@ pub async fn worker_loop(
                     }
 
                     Ok(false) => {
-                        println!(
-                            "任务 {id} 当前不处于 queued 状态，跳过执行"
-                        );
+                        println!("任务 {id} 当前不处于 queued 状态，跳过执行");
                         break false;
                     }
 
                     Err(error) => {
-                        eprintln!(
-                            "认领任务 {id} 失败：{error}，稍后重试"
-                        );
+                        eprintln!("认领任务 {id} 失败：{error}，稍后重试");
                         retry.wait().await;
                     }
                 }
@@ -185,13 +154,7 @@ pub async fn worker_loop(
             Ok((Ok(result), elapsed)) => {
                 let duration_ms = duration_to_ms(elapsed);
 
-                persist_succeeded(
-                    &db,
-                    &id,
-                    &result,
-                    duration_ms,
-                )
-                .await;
+                persist_succeeded(&db, &id, &result, duration_ms).await;
             }
 
             Ok((Err(message), elapsed)) => {
@@ -199,29 +162,15 @@ pub async fn worker_loop(
 
                 eprintln!("任务 {id} 执行失败：{message}");
 
-                persist_failed(
-                    &db,
-                    &id,
-                    &message,
-                    Some(duration_ms),
-                )
-                .await;
+                persist_failed(&db, &id, &message, Some(duration_ms)).await;
             }
 
             Err(join_error) => {
-                let message = format!(
-                    "回测执行线程异常：{join_error}"
-                );
+                let message = format!("回测执行线程异常：{join_error}");
 
                 eprintln!("任务 {id}：{message}");
 
-                persist_failed(
-                    &db,
-                    &id,
-                    &message,
-                    None,
-                )
-                .await;
+                persist_failed(&db, &id, &message, None).await;
             }
         }
     }

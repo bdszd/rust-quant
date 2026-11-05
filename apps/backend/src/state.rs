@@ -1,5 +1,3 @@
-
-
 use sqlx::SqlitePool;
 use std::path::PathBuf;
 

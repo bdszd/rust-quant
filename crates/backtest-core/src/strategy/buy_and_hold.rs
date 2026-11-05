@@ -34,16 +34,17 @@ impl Strategy for BuyAndHoldStrategy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::Bar;
 
     fn bar() -> Bar {
         Bar {
+            symbol: "TEST".to_string(),
             date: "2025-01-01".to_string(),
             open: 10.0,
             high: 11.0,
             low: 9.0,
             close: 10.0,
-            volume: 1000,
+            volume: 1000.0,
+            amount: None,
         }
     }
 

@@ -45,10 +45,7 @@ pub struct RunBacktestRequest {
     long_window: Option<usize>,
 }
 
-fn api_error(
-    status: StatusCode,
-    message: impl Into<String>,
-) -> (StatusCode, Json<ApiError>) {
+fn api_error(status: StatusCode, message: impl Into<String>) -> (StatusCode, Json<ApiError>) {
     (
         status,
         Json(ApiError {
@@ -68,8 +65,7 @@ pub async fn list_datasets(
     let data_dir = state.data_dir.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        let entries = std::fs::read_dir(&data_dir)
-            .map_err(|e| format!("无法读取数据目录：{e}"))?;
+        let entries = std::fs::read_dir(&data_dir).map_err(|e| format!("无法读取数据目录：{e}"))?;
 
         let mut datasets = Vec::new();
 
@@ -80,11 +76,7 @@ pub async fn list_datasets(
                 continue;
             }
 
-            let Some(name) = path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .map(str::to_owned)
-            else {
+            let Some(name) = path.file_name().and_then(|s| s.to_str()).map(str::to_owned) else {
                 continue;
             };
 
@@ -130,9 +122,7 @@ pub async fn create_backtest(
     }
 
     // 3. 校验手续费率。
-    if !request.commission_rate.is_finite()
-        || !(0.0..1.0).contains(&request.commission_rate)
-    {
+    if !request.commission_rate.is_finite() || !(0.0..1.0).contains(&request.commission_rate) {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
             "手续费率必须大于等于 0 且小于 1",
@@ -140,9 +130,7 @@ pub async fn create_backtest(
     }
 
     // 4. 校验滑点率。
-    if !request.slippage_rate.is_finite()
-        || !(0.0..1.0).contains(&request.slippage_rate)
-    {
+    if !request.slippage_rate.is_finite() || !(0.0..1.0).contains(&request.slippage_rate) {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
             "滑点率必须大于等于 0 且小于 1",
@@ -162,40 +150,34 @@ pub async fn create_backtest(
     };
 
     // 6. 校验策略参数。
-    let (strategy, short_window, long_window) =
-        match request.strategy.as_str() {
-            "sma_cross" => {
-                let short = request.short_window.unwrap_or(2);
-                let long = request.long_window.unwrap_or(3);
+    let (strategy, short_window, long_window) = match request.strategy.as_str() {
+        "sma_cross" => {
+            let short = request.short_window.unwrap_or(2);
+            let long = request.long_window.unwrap_or(3);
 
-                if short == 0 {
-                    return Err(api_error(
-                        StatusCode::BAD_REQUEST,
-                        "短期均线窗口必须大于 0",
-                    ));
-                }
-
-                if long <= short {
-                    return Err(api_error(
-                        StatusCode::BAD_REQUEST,
-                        "长期均线窗口必须大于短期均线窗口",
-                    ));
-                }
-
-                ("sma_cross".to_string(), Some(short), Some(long))
+            if short == 0 {
+                return Err(api_error(StatusCode::BAD_REQUEST, "短期均线窗口必须大于 0"));
             }
 
-            "buy_and_hold" => {
-                ("buy_and_hold".to_string(), None, None)
-            }
-
-            _ => {
+            if long <= short {
                 return Err(api_error(
                     StatusCode::BAD_REQUEST,
-                    "不支持的策略，可选值：sma_cross、buy_and_hold",
+                    "长期均线窗口必须大于短期均线窗口",
                 ));
             }
-        };
+
+            ("sma_cross".to_string(), Some(short), Some(long))
+        }
+
+        "buy_and_hold" => ("buy_and_hold".to_string(), None, None),
+
+        _ => {
+            return Err(api_error(
+                StatusCode::BAD_REQUEST,
+                "不支持的策略，可选值：sma_cross、buy_and_hold",
+            ));
+        }
+    };
 
     // 7. 检查数据集文件是否存在。
     let path = state.data_dir.join(&request.dataset);
@@ -206,8 +188,6 @@ pub async fn create_backtest(
             format!("找不到数据集：{}", request.dataset),
         ));
     }
-
-    
 
     // 9. 创建任务 ID。
     let id = make_task_id();
@@ -251,7 +231,6 @@ pub async fn create_backtest(
             )
         })?;
 
-
     Ok((StatusCode::ACCEPTED, Json(task)))
 }
 
@@ -262,14 +241,8 @@ pub async fn get_backtest(
 ) -> Result<Json<BacktestTask>, (StatusCode, Json<ApiError>)> {
     let task = storage::get_task(&state.db, &id)
         .await
-        .map_err(|message| {
-            api_error(StatusCode::INTERNAL_SERVER_ERROR, message)
-        })?;
+        .map_err(|message| api_error(StatusCode::INTERNAL_SERVER_ERROR, message))?;
 
-    task.map(Json).ok_or_else(|| {
-        api_error(
-            StatusCode::NOT_FOUND,
-            format!("找不到回测任务：{id}"),
-        )
-    })
+    task.map(Json)
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, format!("找不到回测任务：{id}")))
 }

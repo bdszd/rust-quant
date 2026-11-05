@@ -1,13 +1,7 @@
-use crate::{
-    storage,
-    tasks::BacktestJob,
-};
+use crate::{storage, tasks::BacktestJob};
 
 use sqlx::SqlitePool;
-use std::{
-    collections::HashSet,
-    time::Duration,
-};
+use std::{collections::HashSet, time::Duration};
 
 use tokio::{
     sync::{mpsc, oneshot},

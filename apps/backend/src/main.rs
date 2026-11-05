@@ -1,33 +1,24 @@
-
 mod api;
 mod backtest;
+mod dispatcher;
 mod state;
 mod storage;
 mod tasks;
 mod worker;
-mod dispatcher;
 
-use std::{
-    env,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{env, path::PathBuf, sync::Arc};
 
 use axum::{
     Router,
     routing::{get, post},
 };
-use tokio::sync::{
-    Mutex as AsyncMutex,
-    mpsc,
-    oneshot,
-};
+use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot};
 use tower_http::cors::CorsLayer;
 
+use dispatcher::dispatcher_loop;
 use state::AppState;
 use tasks::BacktestJob;
 use worker::worker_loop;
-use dispatcher::dispatcher_loop;
 
 const WORKER_COUNT: usize = 2;
 const QUEUE_CAPACITY: usize = 16;
@@ -48,10 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. 初始化 SQLite。
     let db_path = env::var_os("RUST_QUANT_DB_PATH")
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("quant-backend.sqlite3")
-        });
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("quant-backend.sqlite3"));
 
     let db = storage::connect(&db_path).await?;
     storage::init(&db).await?;
@@ -61,8 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("已恢复 {reset_count} 个未完成任务");
 
     // 4. 创建有界任务队列。
-    let (task_sender, receiver) =
-        mpsc::channel::<BacktestJob>(QUEUE_CAPACITY);
+    let (task_sender, receiver) = mpsc::channel::<BacktestJob>(QUEUE_CAPACITY);
 
     let receiver = Arc::new(AsyncMutex::new(receiver));
 
@@ -88,18 +75,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db_for_dispatch = db.clone();
 
     let dispatcher_handle = tokio::spawn(async move {
-        dispatcher_loop(
-            db_for_dispatch,
-            task_sender,
-            dispatcher_shutdown_rx,
-        ).await;
+        dispatcher_loop(db_for_dispatch, task_sender, dispatcher_shutdown_rx).await;
     });
 
     // 7. 创建应用状态。
-    let state = AppState {
-        data_dir,
-        db,
-    };
+    let state = AppState { data_dir, db };
 
     // 8. 注册 HTTP 路由。
     let app = Router::new()
@@ -111,8 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(CorsLayer::permissive());
 
     // 9. 启动 HTTP 服务，监听 Ctrl+C。
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:8000")
-        .await?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:8000").await?;
 
     println!("Backend listening on http://127.0.0.1:8000");
 
@@ -122,7 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 10. HTTP 服务退出后，等待所有 Worker 完成剩余任务。
     //
-    // app 已经释放 AppState，task_sender 随之释放。
+    // app 已经释放 AppState，tas_sender 随之释放。
     // 当队列中的任务全部消费完，Receiver.recv() 返回 None。
     println!("HTTP 服务已关闭");
 

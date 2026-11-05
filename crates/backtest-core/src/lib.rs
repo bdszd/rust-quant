@@ -6,6 +6,15 @@ pub mod indicators;
 pub mod portfolio;
 pub mod strategy;
 
+#[path = "data-clean/mod.rs"]
+pub mod data_clean;
+
+pub use data_clean::{CleaningResult, DataQualityReport, RejectedRecord, load_clean_bars};
+
+pub use data_clean::storage::{
+    StoragePaths, load_cleaned_bars, load_quality_report, save_cleaning_result,
+};
+
 pub use data::{Bar, load_bars};
 pub use engine::{BacktestConfig, BacktestResult, run};
 pub use execution::{ExecutionMode, Trade};
@@ -32,12 +41,14 @@ mod tests {
 
     fn make_bar(date: &str, open: f64, close: f64) -> Bar {
         Bar {
+            symbol: "TEST".to_string(),
             date: date.to_string(),
             open,
             high: open.max(close) + 0.5,
             low: open.min(close) - 0.5,
             close,
-            volume: 1000,
+            volume: 1000.0,
+            amount: None,
         }
     }
 
@@ -69,7 +80,9 @@ mod tests {
 
         assert_eq!(bars.len(), 2);
         assert_eq!(bars[0].close, 243.0);
-        assert_eq!(bars[1].volume, 1_500_000);
+        assert_eq!(bars[1].volume, 1_500_000.0);
+        assert_eq!(bars[0].symbol, "");
+        assert_eq!(bars[0].amount, None);
     }
 
     #[test]
