@@ -37,8 +37,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&data_dir)?;
 
     // 2. 连接 PostgreSQL 并执行数据库迁移。
-    let database_url = env::var("DATABASE_URL")
-        .expect("必须设置 DATABASE_URL，例如 postgres://postgres:postgres@localhost:5432/rust_quant");
+    let database_url = env::var("DATABASE_URL").expect(
+        "必须设置 DATABASE_URL，例如 postgres://postgres:postgres@localhost:5432/rust_quant",
+    );
 
     let db = storage::connect(&database_url).await?;
     sqlx::migrate!("./migrations").run(&db).await?;

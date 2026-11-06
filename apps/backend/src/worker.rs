@@ -58,12 +58,7 @@ async fn persist_succeeded(
     }
 }
 
-async fn persist_failed(
-    db: &PgPool,
-    id: &str,
-    message: &str,
-    execution_duration_ms: Option<i64>,
-) {
+async fn persist_failed(db: &PgPool, id: &str, message: &str, execution_duration_ms: Option<i64>) {
     let mut retry = RetryDelay::new();
 
     loop {
