@@ -1,4 +1,7 @@
-use crate::{broker::{BACKTEST_QUEUE, connect_channel}, storage};
+use crate::{
+    broker::{BACKTEST_QUEUE, connect_channel},
+    storage,
+};
 use lapin::{
     BasicProperties,
     options::{BasicPublishOptions, ConfirmSelectOptions},
@@ -14,11 +17,7 @@ const BATCH_SIZE: i64 = 32;
 /// 从 PostgreSQL Outbox 读取待发布任务，并投递到 RabbitMQ。
 ///
 /// 只有收到 RabbitMQ Publisher Confirm 后，才将 Outbox 记录标记为已发布。
-pub async fn publisher_loop(
-    db: PgPool,
-    amqp_addr: String,
-    mut shutdown: watch::Receiver<bool>,
-) {
+pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::Receiver<bool>) {
     println!("Outbox Publisher 已启动");
 
     loop {
@@ -57,8 +56,7 @@ pub async fn publisher_loop(
 
         loop {
             tokio::select! {
-                changed = shutdown.changed() => {
-                    let _ = changed;
+                _ = shutdown.changed() => {
                     println!("Outbox Publisher 收到关闭信号");
                     return;
                 }
@@ -146,10 +144,7 @@ async fn publish_one(channel: &lapin::Channel, payload: &str) -> Result<(), Stri
     Ok(())
 }
 
-async fn wait_or_shutdown(
-    shutdown: &mut watch::Receiver<bool>,
-    duration: Duration,
-) -> bool {
+async fn wait_or_shutdown(shutdown: &mut watch::Receiver<bool>, duration: Duration) -> bool {
     tokio::select! {
         _ = tokio::time::sleep(duration) => false,
         changed = shutdown.changed() => {

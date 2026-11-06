@@ -69,14 +69,12 @@ pub async fn insert_task(
     .await
     .map_err(|e| format!("保存回测任务失败：{e}"))?;
 
-    sqlx::query(
-        "INSERT INTO backtest_outbox (task_id, payload) VALUES ($1, $2)",
-    )
-    .bind(&task.id)
-    .bind(&job_json)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| format!("保存 Outbox 事件失败：{e}"))?;
+    sqlx::query("INSERT INTO backtest_outbox (task_id, payload) VALUES ($1, $2)")
+        .bind(&task.id)
+        .bind(&job_json)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| format!("保存 Outbox 事件失败：{e}"))?;
 
     tx.commit()
         .await
@@ -152,10 +150,7 @@ pub async fn reset_running_tasks(pool: &PgPool) -> Result<u64, sqlx::Error> {
 }
 
 /// 读取尚未收到 RabbitMQ Publisher Confirm 的 Outbox 事件。
-pub async fn list_pending_outbox(
-    pool: &PgPool,
-    limit: i64,
-) -> Result<Vec<OutboxMessage>, String> {
+pub async fn list_pending_outbox(pool: &PgPool, limit: i64) -> Result<Vec<OutboxMessage>, String> {
     let rows = sqlx::query(
         r#"
         SELECT task_id, payload

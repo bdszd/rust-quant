@@ -77,14 +77,13 @@ pub async fn list_datasets(
     let data_dir = state.data_dir.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        let symbols = std::fs::read_dir(&data_dir)
-            .map_err(|e| format!("无法读取清洗数据目录：{e}"))?;
+        let symbols =
+            std::fs::read_dir(&data_dir).map_err(|e| format!("无法读取清洗数据目录：{e}"))?;
 
         let mut datasets = Vec::new();
 
         for symbol_entry in symbols {
-            let symbol_entry =
-                symbol_entry.map_err(|e| format!("读取股票代码目录失败：{e}"))?;
+            let symbol_entry = symbol_entry.map_err(|e| format!("读取股票代码目录失败：{e}"))?;
             let symbol_path = symbol_entry.path();
 
             if !symbol_path.is_dir() {
@@ -99,8 +98,7 @@ pub async fn list_datasets(
                 .map_err(|e| format!("读取 {symbol} 的日期目录失败：{e}"))?;
 
             for date_entry in date_ranges {
-                let date_entry =
-                    date_entry.map_err(|e| format!("读取日期目录失败：{e}"))?;
+                let date_entry = date_entry.map_err(|e| format!("读取日期目录失败：{e}"))?;
                 let date_path = date_entry.path();
 
                 if !date_path.is_dir() {
@@ -121,10 +119,8 @@ pub async fn list_datasets(
                 let metadata_content = std::fs::read_to_string(&metadata_path)
                     .map_err(|e| format!("读取数据集元数据失败：{metadata_path:?}: {e}"))?;
 
-                let metadata: DatasetMetadata =
-                    serde_json::from_str(&metadata_content).map_err(|e| {
-                        format!("解析数据集元数据失败：{metadata_path:?}: {e}")
-                    })?;
+                let metadata: DatasetMetadata = serde_json::from_str(&metadata_content)
+                    .map_err(|e| format!("解析数据集元数据失败：{metadata_path:?}: {e}"))?;
 
                 datasets.push(DatasetInfo {
                     name: format!("{symbol}/{date_range}"),
@@ -216,8 +212,7 @@ pub async fn create_backtest(
     };
 
     let dataset_dir = state.data_dir.join(&request.dataset);
-    if !dataset_dir.join("bars.csv").is_file()
-        || !dataset_dir.join("quality_report.json").is_file()
+    if !dataset_dir.join("bars.csv").is_file() || !dataset_dir.join("quality_report.json").is_file()
     {
         return Err(api_error(
             StatusCode::NOT_FOUND,

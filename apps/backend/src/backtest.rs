@@ -62,8 +62,8 @@ pub fn validate_bars(bars: &[Bar]) -> Result<(), String> {
 pub fn execute_job(job: BacktestJob) -> Result<ApiBacktestResult, String> {
     let path = job.data_dir.join(&job.dataset).join("bars.csv");
 
-    let bars =
-        load_bars(path.to_string_lossy().as_ref()).map_err(|e| format!("行情 CSV 读取失败：{e}"))?;
+    let bars = load_bars(path.to_string_lossy().as_ref())
+        .map_err(|e| format!("行情 CSV 读取失败：{e}"))?;
 
     validate_bars(&bars)?;
 

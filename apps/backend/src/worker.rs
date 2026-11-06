@@ -67,12 +67,7 @@ async fn persist_succeeded(
     }
 }
 
-async fn persist_failed(
-    db: &PgPool,
-    id: &str,
-    message: &str,
-    execution_duration_ms: Option<i64>,
-) {
+async fn persist_failed(db: &PgPool, id: &str, message: &str, execution_duration_ms: Option<i64>) {
     let mut retry = RetryDelay::new();
 
     loop {
@@ -116,10 +111,7 @@ pub async fn worker_loop(
             }
         };
 
-        if let Err(error) = channel
-            .basic_qos(1, BasicQosOptions::default())
-            .await
-        {
+        if let Err(error) = channel.basic_qos(1, BasicQosOptions::default()).await {
             eprintln!("Worker {worker_id} 设置 prefetch 失败：{error}");
             drop(channel);
             drop(connection);
