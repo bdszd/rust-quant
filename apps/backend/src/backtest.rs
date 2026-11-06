@@ -5,13 +5,24 @@ use backtest_core::{
 use std::path::Path as FsPath;
 
 pub fn validate_dataset_name(dataset: &str) -> Result<(), String> {
-    if dataset.trim().is_empty()
-        || dataset.contains('/')
-        || dataset.contains('\\')
-        || !dataset.ends_with(".csv")
-        || FsPath::new(dataset).file_name().and_then(|s| s.to_str()) != Some(dataset)
+    let mut parts = dataset.split('/');
+
+    let Some(symbol) = parts.next() else {
+        return Err("dataset 必须使用 股票代码/日期范围 格式".to_string());
+    };
+    let Some(date_range) = parts.next() else {
+        return Err("dataset 必须使用 股票代码/日期范围 格式".to_string());
+    };
+
+    if parts.next().is_some()
+        || symbol.trim().is_empty()
+        || date_range.trim().is_empty()
+        || FsPath::new(symbol).file_name().and_then(|s| s.to_str()) != Some(symbol)
+        || FsPath::new(date_range).file_name().and_then(|s| s.to_str()) != Some(date_range)
+        || symbol.contains('\\')
+        || date_range.contains('\\')
     {
-        return Err("dataset 必须是 data 目录中的 CSV 文件名".to_string());
+        return Err("dataset 必须使用有效的 股票代码/日期范围 格式".to_string());
     }
 
     Ok(())
@@ -47,20 +58,15 @@ pub fn validate_bars(bars: &[Bar]) -> Result<(), String> {
     Ok(())
 }
 
-/// 执行实际回测。
-///
-/// 这个函数由 spawn_blocking 调用，
-/// 因此 CSV 读取、数据检查和 run() 不会直接占用 Tokio 异步工作线程。
+/// 执行实际回测。行情来自 data/cleaned/<symbol>/<date-range>/bars.csv。
 pub fn execute_job(job: BacktestJob) -> Result<ApiBacktestResult, String> {
-    let path = job.data_dir.join(&job.dataset);
+    let path = job.data_dir.join(&job.dataset).join("bars.csv");
 
     let bars =
-        load_bars(path.to_string_lossy().as_ref()).map_err(|e| format!("CSV 读取失败：{e}"))?;
+        load_bars(path.to_string_lossy().as_ref()).map_err(|e| format!("行情 CSV 读取失败：{e}"))?;
 
     validate_bars(&bars)?;
 
-    // 根据请求选择具体策略。
-    // 创建后统一存放在 Box<dyn Strategy> 中。
     let mut strategy: Box<dyn Strategy> = match job.strategy.as_str() {
         "sma_cross" => Box::new(SmaCrossStrategy::new(
             job.short_window.unwrap_or(2),

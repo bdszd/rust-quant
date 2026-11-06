@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pandas as pd
 
@@ -8,9 +9,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
 CLEANED_DIR = PROJECT_ROOT / "data" / "cleaned"
 
-# Tushare daily 数据字段：
-# vol 单位为手，amount 单位为千元。
-# 输出字段与 crates/backtest-core/src/data.rs 中的 Bar 对应。
 OUTPUT_COLUMNS = [
     "symbol",
     "date",
@@ -48,9 +46,23 @@ def clean_file(input_file: Path, output_dir: Path) -> None:
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / "bars.csv"
+    metadata_file = output_dir / "quality_report.json"
+
     bars.to_csv(output_file, index=False)
 
+    # 当前 Python 清洗脚本负责字段映射、单位转换和排序。
+    # accepted_rows 是最终输出的标准行情行数，不在这里虚构质量指标。
+    metadata = {
+        "total_rows": int(len(df)),
+        "accepted_rows": int(len(bars)),
+    }
+    metadata_file.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
     print(f"Saved {len(bars)} bars: {output_file}")
+    print(f"Saved metadata: {metadata_file}")
 
 
 def main() -> None:
@@ -62,8 +74,6 @@ def main() -> None:
 
     for input_file in csv_files:
         relative_path = input_file.relative_to(RAW_DIR)
-
-        # 保留原始文件的目录和文件名，避免不同日期范围的数据互相覆盖。
         output_dir = CLEANED_DIR / relative_path.parent / input_file.stem
         clean_file(input_file, output_dir)
 

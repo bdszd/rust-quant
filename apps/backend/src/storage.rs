@@ -2,10 +2,13 @@ use crate::tasks::{ApiBacktestResult, BacktestJob, BacktestTask, TaskStatus};
 
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 
+#[derive(Debug)]
+pub struct OutboxMessage {
+    pub task_id: String,
+    pub payload: String,
+}
+
 /// 建立 PostgreSQL 连接池。
-///
-/// DATABASE_URL 示例：
-/// postgres://postgres:postgres@localhost:5432/rust_quant
 pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
     PgPoolOptions::new()
         .max_connections(10)
@@ -33,7 +36,7 @@ fn status_from_str(status: &str) -> Result<TaskStatus, String> {
     }
 }
 
-/// 创建任务时，同时保存任务展示信息和完整执行参数。
+/// 在同一个 PostgreSQL 事务中写入任务和 Outbox 事件。
 pub async fn insert_task(
     pool: &PgPool,
     task: &BacktestTask,
@@ -41,18 +44,16 @@ pub async fn insert_task(
 ) -> Result<(), String> {
     let job_json = serde_json::to_string(job).map_err(|e| format!("序列化回测任务失败：{e}"))?;
 
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| format!("开启任务事务失败：{e}"))?;
+
     sqlx::query(
         r#"
         INSERT INTO backtest_tasks (
-            id,
-            dataset,
-            strategy,
-            short_window,
-            long_window,
-            job_json,
-            status,
-            result_json,
-            error
+            id, dataset, strategy, short_window, long_window,
+            job_json, status, result_json, error
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL)
         "#,
@@ -62,19 +63,147 @@ pub async fn insert_task(
     .bind(&task.strategy)
     .bind(task.short_window.map(|v| v as i32))
     .bind(task.long_window.map(|v| v as i32))
-    .bind(job_json)
+    .bind(&job_json)
     .bind(status_to_str(task.status))
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(|e| format!("保存回测任务失败：{e}"))?;
+
+    sqlx::query(
+        "INSERT INTO backtest_outbox (task_id, payload) VALUES ($1, $2)",
+    )
+    .bind(&task.id)
+    .bind(&job_json)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| format!("保存 Outbox 事件失败：{e}"))?;
+
+    tx.commit()
+        .await
+        .map_err(|e| format!("提交任务事务失败：{e}"))?;
 
     Ok(())
 }
 
-/// 原子认领任务。
+/// 启动恢复：
+/// 1. 把上次进程遗留的 running 任务重置为 queued，并重置其 Outbox；
+/// 2. 为升级前已经存在、但尚无 Outbox 记录的 queued 任务补建事件。
 ///
-/// 只有状态仍然是 queued 的任务才能被认领。
-/// 认领成功时记录 started_at。
+/// 这是单 Backend 实例的恢复策略。多实例部署必须改为租约/心跳恢复。
+pub async fn reset_running_tasks(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    let rows = sqlx::query(
+        r#"
+        UPDATE backtest_tasks
+        SET status = 'queued',
+            started_at = NULL,
+            finished_at = NULL,
+            execution_duration_ms = NULL,
+            result_json = NULL,
+            error = NULL,
+            updated_at = NOW()
+        WHERE status = 'running'
+          AND job_json IS NOT NULL
+        RETURNING id, job_json
+        "#,
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+
+    for row in &rows {
+        let id: String = row.try_get("id")?;
+        let job_json: String = row.try_get("job_json")?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO backtest_outbox (task_id, payload, created_at, published_at)
+            VALUES ($1, $2, NOW(), NULL)
+            ON CONFLICT (task_id)
+            DO UPDATE SET
+                payload = EXCLUDED.payload,
+                created_at = NOW(),
+                published_at = NULL
+            "#,
+        )
+        .bind(id)
+        .bind(job_json)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    // 兼容引入 Outbox 前已经写入数据库的 queued 任务。
+    sqlx::query(
+        r#"
+        INSERT INTO backtest_outbox (task_id, payload)
+        SELECT id, job_json
+        FROM backtest_tasks
+        WHERE status = 'queued'
+          AND job_json IS NOT NULL
+        ON CONFLICT (task_id) DO NOTHING
+        "#,
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(rows.len() as u64)
+}
+
+/// 读取尚未收到 RabbitMQ Publisher Confirm 的 Outbox 事件。
+pub async fn list_pending_outbox(
+    pool: &PgPool,
+    limit: i64,
+) -> Result<Vec<OutboxMessage>, String> {
+    let rows = sqlx::query(
+        r#"
+        SELECT task_id, payload
+        FROM backtest_outbox
+        WHERE published_at IS NULL
+        ORDER BY created_at ASC
+        LIMIT $1
+        "#,
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("查询待发布 Outbox 失败：{e}"))?;
+
+    let mut messages = Vec::with_capacity(rows.len());
+
+    for row in rows {
+        messages.push(OutboxMessage {
+            task_id: row
+                .try_get("task_id")
+                .map_err(|e| format!("读取 Outbox task_id 失败：{e}"))?,
+            payload: row
+                .try_get("payload")
+                .map_err(|e| format!("读取 Outbox payload 失败：{e}"))?,
+        });
+    }
+
+    Ok(messages)
+}
+
+/// 收到 RabbitMQ Publisher Confirm 后，标记事件已发布。
+pub async fn mark_outbox_published(pool: &PgPool, task_id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE backtest_outbox
+        SET published_at = NOW()
+        WHERE task_id = $1
+          AND published_at IS NULL
+        "#,
+    )
+    .bind(task_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// 原子认领任务。只有 queued 状态的任务才能转为 running。
 pub async fn claim_task(pool: &PgPool, id: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         r#"
@@ -96,61 +225,6 @@ pub async fn claim_task(pool: &PgPool, id: &str) -> Result<bool, sqlx::Error> {
     .await?;
 
     Ok(result.rows_affected() == 1)
-}
-
-/// 服务启动时，将上次进程遗留的 running 任务重新设为 queued。
-///
-/// 当前阶段仍按单个 Backend 实例运行；引入多实例 Worker 后，
-/// 将由任务租约/超时恢复机制替代全量重置。
-pub async fn reset_running_tasks(pool: &PgPool) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query(
-        r#"
-        UPDATE backtest_tasks
-        SET status = 'queued',
-            started_at = NULL,
-            finished_at = NULL,
-            execution_duration_ms = NULL,
-            error = NULL,
-            updated_at = NOW()
-        WHERE status = 'running'
-          AND job_json IS NOT NULL
-        "#,
-    )
-    .execute(pool)
-    .await?;
-
-    Ok(result.rows_affected())
-}
-
-/// 从数据库读取所有可以恢复执行的任务。
-pub async fn list_queued_jobs(pool: &PgPool) -> Result<Vec<BacktestJob>, String> {
-    let rows = sqlx::query(
-        r#"
-        SELECT job_json
-        FROM backtest_tasks
-        WHERE status = 'queued'
-          AND job_json IS NOT NULL
-        ORDER BY created_at ASC
-        "#,
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| format!("查询待执行任务失败：{e}"))?;
-
-    let mut jobs = Vec::with_capacity(rows.len());
-
-    for row in rows {
-        let job_json: String = row
-            .try_get("job_json")
-            .map_err(|e| format!("读取任务参数失败：{e}"))?;
-
-        let job: BacktestJob =
-            serde_json::from_str(&job_json).map_err(|e| format!("解析待恢复任务失败：{e}"))?;
-
-        jobs.push(job);
-    }
-
-    Ok(jobs)
 }
 
 pub async fn get_task(pool: &PgPool, id: &str) -> Result<Option<BacktestTask>, String> {
@@ -212,7 +286,7 @@ pub async fn get_task(pool: &PgPool, id: &str) -> Result<Option<BacktestTask>, S
         result,
         error: row
             .try_get("error")
-            .map_err(|e| format!("读取任务错误信息失败：{e}"))?,
+            .map_err(|e| format!("读取错误信息失败：{e}"))?,
         execution_duration_ms,
     }))
 }
@@ -227,7 +301,7 @@ pub async fn mark_succeeded(
     let result_json =
         serde_json::to_string(result).map_err(|e| format!("序列化回测结果失败：{e}"))?;
 
-    sqlx::query(
+    let update = sqlx::query(
         r#"
         UPDATE backtest_tasks
         SET status = 'succeeded',
@@ -247,12 +321,14 @@ pub async fn mark_succeeded(
     .await
     .map_err(|e| format!("保存回测结果失败：{e}"))?;
 
+    if update.rows_affected() != 1 {
+        return Err(format!("任务 {id} 不处于 running 状态，未能保存成功结果"));
+    }
+
     Ok(())
 }
 
 /// 保存失败状态和实际执行耗时。
-///
-/// 如果线程异常，可能没有拿到有效耗时，此时传入 None。
 pub async fn mark_failed(
     pool: &PgPool,
     id: &str,

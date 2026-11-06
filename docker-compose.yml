@@ -17,5 +17,24 @@ services:
       timeout: 5s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: rust-quant-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: rust_quant
+      RABBITMQ_DEFAULT_PASS: rust_quant_dev
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    volumes:
+      - rust_quant_rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   rust_quant_postgres_data:
+  rust_quant_rabbitmq_data:

@@ -9,7 +9,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use backtest_core::{ExecutionMode, load_bars};
+use backtest_core::ExecutionMode;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
@@ -19,8 +19,15 @@ pub struct ApiError {
 
 #[derive(Debug, Serialize)]
 pub struct DatasetInfo {
+    /// 股票代码/日期范围，例如 000001.SZ/20240101_20241231。
     pub name: String,
+    /// 从 quality_report.json 的 accepted_rows 读取。
     pub rows: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct DatasetMetadata {
+    accepted_rows: usize,
 }
 
 fn default_strategy() -> String {
@@ -59,33 +66,70 @@ pub async fn health() -> Json<serde_json::Value> {
 }
 
 // GET /api/datasets
+//
+// data/cleaned/<symbol>/<date-range>/
+//   ├── bars.csv
+//   ├── rejected.csv
+//   └── quality_report.json
 pub async fn list_datasets(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<DatasetInfo>>, (StatusCode, Json<ApiError>)> {
     let data_dir = state.data_dir.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        let entries = std::fs::read_dir(&data_dir).map_err(|e| format!("无法读取数据目录：{e}"))?;
+        let symbols = std::fs::read_dir(&data_dir)
+            .map_err(|e| format!("无法读取清洗数据目录：{e}"))?;
 
         let mut datasets = Vec::new();
 
-        for entry in entries.flatten() {
-            let path = entry.path();
+        for symbol_entry in symbols {
+            let symbol_entry =
+                symbol_entry.map_err(|e| format!("读取股票代码目录失败：{e}"))?;
+            let symbol_path = symbol_entry.path();
 
-            if path.extension().and_then(|s| s.to_str()) != Some("csv") {
+            if !symbol_path.is_dir() {
                 continue;
             }
 
-            let Some(name) = path.file_name().and_then(|s| s.to_str()).map(str::to_owned) else {
+            let Some(symbol) = symbol_path.file_name().and_then(|s| s.to_str()) else {
                 continue;
             };
 
-            match load_bars(path.to_string_lossy().as_ref()) {
-                Ok(bars) => datasets.push(DatasetInfo {
-                    name,
-                    rows: bars.len(),
-                }),
-                Err(_) => datasets.push(DatasetInfo { name, rows: 0 }),
+            let date_ranges = std::fs::read_dir(&symbol_path)
+                .map_err(|e| format!("读取 {symbol} 的日期目录失败：{e}"))?;
+
+            for date_entry in date_ranges {
+                let date_entry =
+                    date_entry.map_err(|e| format!("读取日期目录失败：{e}"))?;
+                let date_path = date_entry.path();
+
+                if !date_path.is_dir() {
+                    continue;
+                }
+
+                let Some(date_range) = date_path.file_name().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+
+                let bars_path = date_path.join("bars.csv");
+                let metadata_path = date_path.join("quality_report.json");
+
+                if !bars_path.is_file() || !metadata_path.is_file() {
+                    continue;
+                }
+
+                let metadata_content = std::fs::read_to_string(&metadata_path)
+                    .map_err(|e| format!("读取数据集元数据失败：{metadata_path:?}: {e}"))?;
+
+                let metadata: DatasetMetadata =
+                    serde_json::from_str(&metadata_content).map_err(|e| {
+                        format!("解析数据集元数据失败：{metadata_path:?}: {e}")
+                    })?;
+
+                datasets.push(DatasetInfo {
+                    name: format!("{symbol}/{date_range}"),
+                    rows: metadata.accepted_rows,
+                });
             }
         }
 
@@ -109,11 +153,9 @@ pub async fn create_backtest(
     State(state): State<AppState>,
     Json(request): Json<RunBacktestRequest>,
 ) -> Result<(StatusCode, Json<BacktestTask>), (StatusCode, Json<ApiError>)> {
-    // 1. 校验数据集名称。
     validate_dataset_name(&request.dataset)
         .map_err(|message| api_error(StatusCode::BAD_REQUEST, message))?;
 
-    // 2. 校验初始资金。
     if !request.initial_cash.is_finite() || request.initial_cash <= 0.0 {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
@@ -121,7 +163,6 @@ pub async fn create_backtest(
         ));
     }
 
-    // 3. 校验手续费率。
     if !request.commission_rate.is_finite() || !(0.0..1.0).contains(&request.commission_rate) {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
@@ -129,7 +170,6 @@ pub async fn create_backtest(
         ));
     }
 
-    // 4. 校验滑点率。
     if !request.slippage_rate.is_finite() || !(0.0..1.0).contains(&request.slippage_rate) {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
@@ -137,7 +177,6 @@ pub async fn create_backtest(
         ));
     }
 
-    // 5. 解析执行模式。
     let execution_mode = match request.execution_mode.as_str() {
         "next_open" => ExecutionMode::NextOpen,
         "next_close" => ExecutionMode::NextClose,
@@ -149,7 +188,6 @@ pub async fn create_backtest(
         }
     };
 
-    // 6. 校验策略参数。
     let (strategy, short_window, long_window) = match request.strategy.as_str() {
         "sma_cross" => {
             let short = request.short_window.unwrap_or(2);
@@ -168,9 +206,7 @@ pub async fn create_backtest(
 
             ("sma_cross".to_string(), Some(short), Some(long))
         }
-
         "buy_and_hold" => ("buy_and_hold".to_string(), None, None),
-
         _ => {
             return Err(api_error(
                 StatusCode::BAD_REQUEST,
@@ -179,20 +215,18 @@ pub async fn create_backtest(
         }
     };
 
-    // 7. 检查数据集文件是否存在。
-    let path = state.data_dir.join(&request.dataset);
-
-    if !path.is_file() {
+    let dataset_dir = state.data_dir.join(&request.dataset);
+    if !dataset_dir.join("bars.csv").is_file()
+        || !dataset_dir.join("quality_report.json").is_file()
+    {
         return Err(api_error(
             StatusCode::NOT_FOUND,
-            format!("找不到数据集：{}", request.dataset),
+            format!("找不到清洗后的数据集：{}", request.dataset),
         ));
     }
 
-    // 9. 创建任务 ID。
     let id = make_task_id();
 
-    // 10. 创建 API 任务记录。
     let task = BacktestTask {
         id: id.clone(),
         dataset: request.dataset.clone(),
@@ -205,9 +239,8 @@ pub async fn create_backtest(
         execution_duration_ms: None,
     };
 
-    // 11. 创建完整的后台执行任务。
     let job = BacktestJob {
-        id: id.clone(),
+        id,
         dataset: request.dataset,
         data_dir: state.data_dir.clone(),
         initial_cash: request.initial_cash,
@@ -219,9 +252,7 @@ pub async fn create_backtest(
         long_window,
     };
 
-    // 12. 先持久化。
-    //
-    // 如果数据库写入失败，permit 会在函数返回时自动释放。
+    // 任务记录和 Outbox 消息在同一个 PostgreSQL 事务中提交。
     storage::insert_task(&state.db, &task, &job)
         .await
         .map_err(|message| {

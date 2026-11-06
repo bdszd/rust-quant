@@ -1,80 +1,82 @@
 mod api;
 mod backtest;
-mod dispatcher;
+mod broker;
+mod publisher;
 mod state;
 mod storage;
 mod tasks;
 mod worker;
 
-use std::{env, path::PathBuf, sync::Arc};
+use std::{env, path::PathBuf};
 
 use axum::{
     Router,
     routing::{get, post},
 };
-use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot};
+use tokio::sync::watch;
 use tower_http::cors::CorsLayer;
 
-use dispatcher::dispatcher_loop;
+use publisher::publisher_loop;
 use state::AppState;
-use tasks::BacktestJob;
 use worker::worker_loop;
 
 const WORKER_COUNT: usize = 2;
-const QUEUE_CAPACITY: usize = 16;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. 初始化数据目录。
+    // 1. 初始化清洗后行情数据目录。
     let data_dir = env::var_os("RUST_QUANT_DATA_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../..")
                 .join("data")
+                .join("cleaned")
         });
 
     std::fs::create_dir_all(&data_dir)?;
 
     // 2. 连接 PostgreSQL 并执行数据库迁移。
     let database_url = env::var("DATABASE_URL").expect(
-        "必须设置 DATABASE_URL，例如 postgres://postgres:postgres@localhost:5432/rust_quant",
+        "必须设置 DATABASE_URL，例如 postgres://postgres:postgres@localhost:5433/rust_quant",
     );
+
+    let amqp_addr = env::var("AMQP_ADDR")
+        .expect("必须设置 AMQP_ADDR，例如 amqp://rust_quant:rust_quant_dev@localhost:5673/%2f");
 
     let db = storage::connect(&database_url).await?;
     sqlx::migrate!("./migrations").run(&db).await?;
 
-    // 3. 恢复上次进程遗留的 running 任务。
+    // 3. 恢复上次进程遗留的 running 任务，并重新放回 Outbox。
     let reset_count = storage::reset_running_tasks(&db).await?;
     println!("已恢复 {reset_count} 个未完成任务");
 
-    // 4. 创建有界任务队列。
-    let (task_sender, receiver) = mpsc::channel::<BacktestJob>(QUEUE_CAPACITY);
-    let receiver = Arc::new(AsyncMutex::new(receiver));
+    // 4. 创建统一关闭信号。
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    // 5. 启动固定数量的 Worker，并保留 JoinHandle。
+    // 5. 启动 Outbox Publisher。
+    let publisher_db = db.clone();
+    let publisher_amqp_addr = amqp_addr.clone();
+    let publisher_shutdown = shutdown_rx.clone();
+
+    let publisher_handle = tokio::spawn(async move {
+        publisher_loop(publisher_db, publisher_amqp_addr, publisher_shutdown).await;
+    });
+
+    // 6. 启动固定数量的 RabbitMQ Consumer。
     let mut worker_handles = Vec::with_capacity(WORKER_COUNT);
 
     for worker_id in 0..WORKER_COUNT {
-        let receiver = Arc::clone(&receiver);
-        let db = db.clone();
+        let worker_db = db.clone();
+        let worker_amqp_addr = amqp_addr.clone();
+        let worker_shutdown = shutdown_rx.clone();
 
         let handle = tokio::spawn(async move {
-            println!("Worker {worker_id} 已启动");
-            worker_loop(receiver, db).await;
-            println!("Worker {worker_id} 已退出");
+            worker_loop(worker_id, worker_db, worker_amqp_addr, worker_shutdown).await;
         });
 
         worker_handles.push(handle);
     }
-
-    // 6. 启动 Dispatcher。
-    let (dispatcher_shutdown_tx, dispatcher_shutdown_rx) = oneshot::channel();
-    let db_for_dispatch = db.clone();
-
-    let dispatcher_handle = tokio::spawn(async move {
-        dispatcher_loop(db_for_dispatch, task_sender, dispatcher_shutdown_rx).await;
-    });
 
     // 7. 创建应用状态。
     let state = AppState { data_dir, db };
@@ -96,22 +98,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
-    // 10. HTTP 服务退出后，等待 Worker 完成剩余任务。
-    println!("HTTP 服务已关闭");
-    let _ = dispatcher_shutdown_tx.send(());
+    // 10. 停止 Publisher 和 Consumer。
+    println!("HTTP 服务已关闭，通知后台任务退出");
+    let _ = shutdown_tx.send(true);
 
-    if let Err(error) = dispatcher_handle.await {
-        eprintln!("Dispatcher 异常退出：{error}");
+    if let Err(error) = publisher_handle.await {
+        eprintln!("Outbox Publisher 异常退出：{error}");
     }
 
-    println!("等待 Worker 完成剩余任务……");
+    println!("等待 Worker 完成当前任务……");
     for handle in worker_handles {
         if let Err(error) = handle.await {
-            eprintln!("Worker 线程异常退出：{error}");
+            eprintln!("Worker 异常退出：{error}");
         }
     }
 
-    println!("所有 Worker 已退出，程序正常结束");
+    println!("所有后台任务已退出，程序正常结束");
     Ok(())
 }
 
