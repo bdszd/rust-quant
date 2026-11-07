@@ -178,11 +178,11 @@ impl Metrics {
     }
 
     pub fn rabbitmq_connection_closed(&self) {
-        let _ =
-            self.rabbitmq_connected
-                .try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
-                    Some(count.saturating_sub(1))
-                });
+        let _ = self
+            .rabbitmq_connected
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                Some(count.saturating_sub(1))
+            });
     }
 
     pub fn snapshot(&self, database_pool: DatabasePoolStats) -> MetricsSnapshot {
