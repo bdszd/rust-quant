@@ -170,6 +170,48 @@ mod tests {
         assert_eq!(portfolio.position(), 0);
     }
 
+    struct BuyThenSell {
+        bars_seen: usize,
+    }
+
+    impl Strategy for BuyThenSell {
+        fn on_bar(&mut self, _bar: &Bar) -> Signal {
+            self.bars_seen += 1;
+            match self.bars_seen {
+                1 => Signal::Buy,
+                2 => Signal::Sell,
+                _ => Signal::Hold,
+            }
+        }
+    }
+
+    #[test]
+    fn a_share_buy_cannot_be_sold_on_the_same_trading_day() {
+        let bars = vec![
+            make_bar("2025-01-02", 10.0, 10.0),
+            make_bar("2025-01-03", 10.0, 10.0),
+            make_bar("2025-01-06", 11.0, 11.0),
+        ];
+        let mut strategy = BuyThenSell { bars_seen: 0 };
+        let config = BacktestConfig {
+            initial_cash: 10_000.0,
+            commission_rate: 0.0,
+            slippage_rate: 0.0,
+            lot_size: 100,
+            stamp_duty_rate: 0.0,
+            min_commission: 0.0,
+            execution_mode: ExecutionMode::NextOpen,
+        };
+
+        let result = run(&bars, &mut strategy, &config);
+
+        assert_eq!(result.trades.len(), 2);
+        assert_eq!(result.trades[0].date, "2025-01-03");
+        assert_eq!(result.trades[0].side, Side::Buy);
+        assert_eq!(result.trades[1].date, "2025-01-06");
+        assert_eq!(result.trades[1].side, Side::Sell);
+    }
+
     #[test]
     fn applies_a_share_lot_minimum_commission_and_sell_stamp_duty() {
         let mut portfolio = Portfolio::new(10_000.0);
