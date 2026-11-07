@@ -1,13 +1,14 @@
 mod api;
 mod backtest;
 mod broker;
+mod metrics;
 mod publisher;
 mod state;
 mod storage;
 mod tasks;
 mod worker;
 
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, sync::Arc};
 
 use axum::{
     Router,
@@ -16,6 +17,7 @@ use axum::{
 use tokio::sync::watch;
 use tower_http::cors::CorsLayer;
 
+use metrics::Metrics;
 use publisher::publisher_loop;
 use state::AppState;
 use worker::worker_loop;
@@ -52,46 +54,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let reset_count = storage::reset_running_tasks(&db).await?;
     println!("已恢复 {reset_count} 个未完成任务");
 
-    // 4. 创建统一关闭信号。
+    // 4. 初始化进程级性能统计。
+    let metrics = Arc::new(Metrics::new(WORKER_COUNT));
+
+    // 5. 创建统一关闭信号。
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    // 5. 启动 Outbox Publisher。
+    // 6. 启动 Outbox Publisher。
     let publisher_db = db.clone();
     let publisher_amqp_addr = amqp_addr.clone();
     let publisher_shutdown = shutdown_rx.clone();
+    let publisher_metrics = metrics.clone();
 
     let publisher_handle = tokio::spawn(async move {
-        publisher_loop(publisher_db, publisher_amqp_addr, publisher_shutdown).await;
+        publisher_loop(publisher_db, publisher_amqp_addr, publisher_shutdown, publisher_metrics).await;
     });
 
-    // 6. 启动固定数量的 RabbitMQ Consumer。
+    // 7. 启动固定数量的 RabbitMQ Consumer。
     let mut worker_handles = Vec::with_capacity(WORKER_COUNT);
 
     for worker_id in 0..WORKER_COUNT {
         let worker_db = db.clone();
         let worker_amqp_addr = amqp_addr.clone();
         let worker_shutdown = shutdown_rx.clone();
+        let worker_metrics = metrics.clone();
 
         let handle = tokio::spawn(async move {
-            worker_loop(worker_id, worker_db, worker_amqp_addr, worker_shutdown).await;
+            worker_loop(worker_id, worker_db, worker_amqp_addr, worker_shutdown, worker_metrics).await;
         });
 
         worker_handles.push(handle);
     }
 
-    // 7. 创建应用状态。
-    let state = AppState { data_dir, db };
+    // 8. 创建应用状态。
+    let state = AppState { data_dir, db, metrics };
 
-    // 8. 注册 HTTP 路由。
+    // 9. 注册 HTTP 路由。
     let app = Router::new()
         .route("/api/health", get(api::health))
+        .route("/api/metrics", get(api::get_metrics))
         .route("/api/datasets", get(api::list_datasets))
         .route("/api/backtests", post(api::create_backtest))
         .route("/api/backtests/{id}", get(api::get_backtest))
         .with_state(state)
         .layer(CorsLayer::permissive());
 
-    // 9. 启动 HTTP 服务，监听 Ctrl+C。
+    // 10. 启动 HTTP 服务，监听 Ctrl+C。
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8000").await?;
     println!("Backend listening on http://127.0.0.1:8000");
 
@@ -99,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
-    // 10. 停止 Publisher 和 Consumer。
+    // 11. 停止 Publisher 和 Consumer。
     println!("HTTP 服务已关闭，通知后台任务退出");
     let _ = shutdown_tx.send(true);
 
