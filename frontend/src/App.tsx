@@ -116,7 +116,7 @@ export default function App() {
         })
       });
       const created: BacktestTask | { error: string } = await response.json();
-      if (!response.ok) throw new Error("error" in created ? created.error : "提交回测失败");
+      if (!response.ok) throw new Error("error" in created ? (created.error ?? "提交回测失败") : "提交回测失败");
       const taskId = (created as BacktestTask).id;
       setTask(created as BacktestTask);
 
