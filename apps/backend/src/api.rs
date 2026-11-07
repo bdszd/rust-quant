@@ -386,9 +386,7 @@ pub async fn create_backtest(
         return Err(api_error(StatusCode::BAD_REQUEST, "每手股数必须大于 0"));
     }
 
-    if !request.stamp_duty_rate.is_finite()
-        || !(0.0..1.0).contains(&request.stamp_duty_rate)
-    {
+    if !request.stamp_duty_rate.is_finite() || !(0.0..1.0).contains(&request.stamp_duty_rate) {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
             "印花税率必须大于等于 0 且小于 1",
