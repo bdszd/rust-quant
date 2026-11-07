@@ -8,6 +8,18 @@ use std::{
 
 static NEXT_TASK_ID: AtomicU64 = AtomicU64::new(1);
 
+fn default_lot_size() -> u64 {
+    1
+}
+
+fn default_stamp_duty_rate() -> f64 {
+    0.0
+}
+
+fn default_min_commission() -> f64 {
+    0.0
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskStatus {
@@ -39,6 +51,12 @@ pub struct BacktestJob {
     pub initial_cash: f64,
     pub commission_rate: f64,
     pub slippage_rate: f64,
+    #[serde(default = "default_lot_size")]
+    pub lot_size: u64,
+    #[serde(default = "default_stamp_duty_rate")]
+    pub stamp_duty_rate: f64,
+    #[serde(default = "default_min_commission")]
+    pub min_commission: f64,
     pub execution_mode: ExecutionMode,
     pub strategy: String,
     pub short_window: Option<usize>,
