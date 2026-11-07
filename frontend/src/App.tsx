@@ -47,6 +47,9 @@ export default function App() {
   const [cash, setCash] = useState("100000");
   const [commission, setCommission] = useState("0.0003");
   const [slippage, setSlippage] = useState("0.0005");
+  const [lotSize, setLotSize] = useState("100");
+  const [stampDuty, setStampDuty] = useState("0.0005");
+  const [minCommission, setMinCommission] = useState("5");
   const [mode, setMode] = useState("next_open");
   const [strategy, setStrategy] = useState<StrategyType>("sma_cross");
   const [shortWindow, setShortWindow] = useState("5");
@@ -93,10 +96,15 @@ export default function App() {
     const initialCash = Number(cash);
     const commissionRate = Number(commission);
     const slippageRate = Number(slippage);
+    const sharesPerLot = Number(lotSize);
+    const stampDutyRate = Number(stampDuty);
+    const minimumCommission = Number(minCommission);
     if (!Number.isFinite(initialCash) || initialCash <= 0) { setError("初始资金必须大于 0"); return; }
-    if (![commissionRate, slippageRate].every(v => Number.isFinite(v) && v >= 0 && v < 1)) {
-      setError("手续费率和滑点率必须在 0 到 1 之间"); return;
+    if (![commissionRate, slippageRate, stampDutyRate].every(v => Number.isFinite(v) && v >= 0 && v < 1)) {
+      setError("手续费率、滑点率和印花税率必须在 0 到 1 之间"); return;
     }
+    if (!Number.isInteger(sharesPerLot) || sharesPerLot <= 0) { setError("每手股数必须是正整数"); return; }
+    if (!Number.isFinite(minimumCommission) || minimumCommission < 0) { setError("最低佣金必须是非负数"); return; }
     if (strategy === "sma_cross") {
       const short = Number(shortWindow), long = Number(longWindow);
       if (!Number.isInteger(short) || !Number.isInteger(long) || short < 1 || long <= short) {
@@ -111,6 +119,8 @@ export default function App() {
         body: JSON.stringify({
           dataset, initial_cash: initialCash, commission_rate: commissionRate,
           slippage_rate: slippageRate, execution_mode: mode, strategy,
+          lot_size: sharesPerLot, stamp_duty_rate: stampDutyRate,
+          min_commission: minimumCommission,
           short_window: strategy === "sma_cross" ? Number(shortWindow) : null,
           long_window: strategy === "sma_cross" ? Number(longWindow) : null
         })
@@ -201,6 +211,11 @@ export default function App() {
                   <Field label="手续费率"><input type="number" min="0" max="0.999999" step="any" value={commission} onChange={e => setCommission(e.target.value)}/><small>0.0003 = 0.03%</small></Field>
                   <Field label="滑点率"><input type="number" min="0" max="0.999999" step="any" value={slippage} onChange={e => setSlippage(e.target.value)}/><small>0.0005 = 0.05%</small></Field>
                 </div>
+                <div className="two-col">
+                  <Field label="每手股数"><input type="number" min="1" step="1" value={lotSize} onChange={e => setLotSize(e.target.value)}/><small>A 股默认 100 股一手</small></Field>
+                  <Field label="最低佣金（元）"><input type="number" min="0" step="any" value={minCommission} onChange={e => setMinCommission(e.target.value)}/><small>按每笔订单收取</small></Field>
+                </div>
+                <Field label="卖出印花税率"><input type="number" min="0" max="0.999999" step="any" value={stampDuty} onChange={e => setStampDuty(e.target.value)}/><small>当前默认 0.0005（0.05%），只对卖出收取</small></Field>
                 <Field label="模拟成交时机">
                   <div className="segmented">
                     <button type="button" className={mode === "next_open" ? "chosen" : ""} onClick={() => setMode("next_open")}>次日开盘</button>
@@ -221,7 +236,7 @@ export default function App() {
                 {task && <div className="task-state"><span className={`state-badge ${task.status}`}>{task.status}</span><span>{task.id}</span></div>}
               </form>
             </div>
-            <div className="panel guidance-panel"><div className="illustration"><BarChart3 size={34}/></div><h2>从行情到回测报告</h2><p>选择一个数据集并设置资金、费用和策略参数。任务会进入后端队列，完成后自动展示结果。</p><div className="flow"><span>01 参数配置</span><i/><span>02 Rust 引擎</span><i/><span>03 绩效报告</span></div><div className="note-box">当前 V1 聚焦单股票日线回测。成交价格、手续费、滑点和每日账户估值均由回测核心统一计算。</div></div>
+            <div className="panel guidance-panel"><div className="illustration"><BarChart3 size={34}/></div><h2>从行情到回测报告</h2><p>选择一个数据集并设置资金、费用和策略参数。任务会进入后端队列，完成后自动展示结果。</p><div className="flow"><span>01 参数配置</span><i/><span>02 Rust 引擎</span><i/><span>03 绩效报告</span></div><div className="note-box">当前 V1 聚焦单股票日线回测。成交价格、整手数量、最低佣金、卖出印花税、滑点和每日账户估值均由回测核心统一计算。</div></div>
           </section>
         )}
 
