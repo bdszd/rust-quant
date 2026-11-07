@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 /// 订单方向。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Side { Buy, Sell }
+pub enum Side {
+    Buy,
+    Sell,
+}
 
 /// 一笔交易请求。V1 撮合市价单，limit_price 保留给后续限价单。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -17,12 +20,22 @@ pub struct Order {
 
 impl Order {
     pub fn market(id: u64, symbol: impl Into<String>, side: Side, quantity: u64) -> Self {
-        Self { id, symbol: symbol.into(), side, quantity, limit_price: None }
+        Self {
+            id,
+            symbol: symbol.into(),
+            side,
+            quantity,
+            limit_price: None,
+        }
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.symbol.trim().is_empty() { return Err("symbol 不能为空".into()); }
-        if self.quantity == 0 { return Err("订单数量必须大于 0".into()); }
+        if self.symbol.trim().is_empty() {
+            return Err("symbol 不能为空".into());
+        }
+        if self.quantity == 0 {
+            return Err("订单数量必须大于 0".into());
+        }
         if let Some(price) = self.limit_price {
             if !price.is_finite() || price <= 0.0 {
                 return Err("限价必须是有限的正数".into());
@@ -46,9 +59,15 @@ pub struct Fill {
 
 impl Fill {
     pub fn validate(&self) -> Result<(), String> {
-        if self.symbol.trim().is_empty() { return Err("symbol 不能为空".into()); }
-        if self.date.trim().is_empty() { return Err("成交日期不能为空".into()); }
-        if self.quantity == 0 { return Err("成交数量必须大于 0".into()); }
+        if self.symbol.trim().is_empty() {
+            return Err("symbol 不能为空".into());
+        }
+        if self.date.trim().is_empty() {
+            return Err("成交日期不能为空".into());
+        }
+        if self.quantity == 0 {
+            return Err("成交数量必须大于 0".into());
+        }
         if !self.price.is_finite() || self.price <= 0.0 {
             return Err("成交价格必须是有限的正数".into());
         }
@@ -79,8 +98,13 @@ mod tests {
     #[test]
     fn rejects_invalid_fill_price() {
         let fill = Fill {
-            order_id: 1, date: "2025-01-01".into(), symbol: "000001.SZ".into(),
-            side: Side::Buy, quantity: 10, price: f64::NAN, fee: 1.0,
+            order_id: 1,
+            date: "2025-01-01".into(),
+            symbol: "000001.SZ".into(),
+            side: Side::Buy,
+            quantity: 10,
+            price: f64::NAN,
+            fee: 1.0,
         };
         assert!(fill.validate().is_err());
     }
