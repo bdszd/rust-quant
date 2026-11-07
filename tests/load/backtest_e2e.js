@@ -32,10 +32,10 @@ if (!DATASET) {
 
 export const options = {
     stages: [
-        { duration: '10s', target: 3 },
-        { duration: '20s', target: 5 },
-        { duration: '10s', target: 10 },
-        { duration: '10s', target: 0 },
+        { duration: '20s', target: 80 },
+        { duration: '40s', target: 110 },
+        { duration: '30s', target: 130 },
+        { duration: '20s', target: 0 },
     ],
 
     thresholds: {

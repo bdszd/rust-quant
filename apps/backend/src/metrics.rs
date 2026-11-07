@@ -178,11 +178,11 @@ impl Metrics {
     }
 
     pub fn rabbitmq_connection_closed(&self) {
-        let _ = self.rabbitmq_connected.fetch_update(
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-            |count| Some(count.saturating_sub(1)),
-        );
+        let _ =
+            self.rabbitmq_connected
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                    Some(count.saturating_sub(1))
+                });
     }
 
     pub fn snapshot(&self, database_pool: DatabasePoolStats) -> MetricsSnapshot {
@@ -193,8 +193,7 @@ impl Metrics {
                 guard
                     .iter()
                     .filter_map(|(name, samples)| {
-                        (!samples.is_empty())
-                            .then(|| (name.clone(), calculate_stats(samples)))
+                        (!samples.is_empty()).then(|| (name.clone(), calculate_stats(samples)))
                     })
                     .collect()
             })
@@ -215,9 +214,7 @@ impl Metrics {
             messaging: MessagingCounters {
                 publish_total: self.publish_total.load(Ordering::Relaxed),
                 publish_failed: self.publish_failed.load(Ordering::Relaxed),
-                publish_confirm_failed: self
-                    .publish_confirm_failed
-                    .load(Ordering::Relaxed),
+                publish_confirm_failed: self.publish_confirm_failed.load(Ordering::Relaxed),
                 consume_total: self.consume_total.load(Ordering::Relaxed),
                 ack_total: self.ack_total.load(Ordering::Relaxed),
                 ack_failed: self.ack_failed.load(Ordering::Relaxed),

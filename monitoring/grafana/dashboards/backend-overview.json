@@ -11,7 +11,7 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Active Workers",
+      "title": "Tasks Overview",
       "gridPos": {
         "h": 5,
         "w": 6,
@@ -24,7 +24,7 @@
       },
       "targets": [
         {
-          "expr": "rust_quant_worker_active",
+          "expr": "rust_quant_tasks_accepted_total",
           "refId": "A"
         }
       ]

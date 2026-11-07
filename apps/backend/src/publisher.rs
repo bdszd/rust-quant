@@ -72,6 +72,7 @@ pub async fn publisher_loop(
 
                 _ = tokio::time::sleep(PUBLISH_INTERVAL) => {
                     let query_started = std::time::Instant::now();
+
                     let messages = match storage::list_pending_outbox(&db, BATCH_SIZE).await {
                         Ok(messages) => messages,
                         Err(error) => {
@@ -82,38 +83,76 @@ pub async fn publisher_loop(
 
                     metrics.record_duration("outbox_query", query_started.elapsed());
 
+                    // 收集本批次中已经收到 RabbitMQ Confirm 的任务。
+                    let mut confirmed_task_ids = Vec::with_capacity(messages.len());
+
                     for message in messages {
                         let publish_started = std::time::Instant::now();
+
                         metrics.increment_publish_total();
+
                         if let Err(error) = publish_one(&channel, &message.payload).await {
                             metrics.increment_publish_failed();
+
                             if error.contains("NACK") || error.contains("Confirm") {
                                 metrics.increment_publish_confirm_failed();
                             }
-                            metrics.record_duration("rabbitmq_publish_confirm", publish_started.elapsed());
+
+                            metrics.record_duration(
+                                "rabbitmq_publish_confirm",
+                                publish_started.elapsed()
+                            );
+
                             eprintln!(
                                 "发布任务 {} 到 RabbitMQ 失败：{error}，准备重新连接",
                                 message.task_id
                             );
+
                             reconnect = true;
                             break;
                         }
 
-                        metrics.record_duration("rabbitmq_publish_confirm", publish_started.elapsed());
+                        metrics.record_duration(
+                            "rabbitmq_publish_confirm",
+                            publish_started.elapsed()
+                        );
+
+                        // 这里只收集 ID，暂时不逐条 UPDATE 数据库。
+                        confirmed_task_ids.push(message.task_id);
+                    }
+
+                    // 一批消息发布完成后，用一条 SQL 批量更新 Outbox。
+                    //
+                    // 即使本批次中途发布失败，也要先标记已经 Confirm 的消息，
+                    // 避免不必要的重复投递。
+                    if !confirmed_task_ids.is_empty() {
                         let update_started = std::time::Instant::now();
-                        if let Err(error) =
-                            storage::mark_outbox_published(&db, &message.task_id).await
-                        {
-                            // Broker 已确认但数据库未标记时，下一轮可能重复发布。
-                            // Worker 通过 task_id 和数据库状态保证幂等。
-                            eprintln!(
-                                "任务 {} 已被 RabbitMQ 确认，但更新 Outbox 状态失败：{error}",
-                                message.task_id
-                            );
-                        } else {
-                            println!("任务 {} 已发布到 RabbitMQ", message.task_id);
+
+                        match storage::mark_outbox_published_batch(
+                            &db,
+                            &confirmed_task_ids
+                        ).await {
+                            Ok(updated) => {
+                                println!(
+                                    "本批次 {} 条消息已收到 Confirm，成功标记 {} 条 Outbox 记录",
+                                    confirmed_task_ids.len(),
+                                    updated
+                                );
+                            }
+                            Err(error) => {
+                                // RabbitMQ 已确认但数据库未标记时，
+                                // 下一轮可能重复发布。
+                                // Worker 仍通过 task_id 和数据库状态保证幂等。
+                                eprintln!(
+                                    "批量更新 Outbox 状态失败：{error}，后续可能重复发布"
+                                );
+                            }
                         }
-                        metrics.record_duration("outbox_update", update_started.elapsed());
+
+                        metrics.record_duration(
+                            "outbox_update",
+                            update_started.elapsed()
+                        );
                     }
 
                     if reconnect {

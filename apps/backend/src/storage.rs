@@ -40,27 +40,26 @@ fn status_from_str(status: &str) -> Result<TaskStatus, String> {
     }
 }
 
-/// 在同一个 PostgreSQL 事务中写入任务和 Outbox 事件。
+/// 在一条 PostgreSQL SQL 语句中原子写入任务和 Outbox 事件。
 ///
 /// 细分统计：
 /// - db_serialize_job：任务 JSON 序列化
 /// - db_acquire_insert_task：获取连接池连接
-/// - db_tx_begin：开启事务
-/// - db_task_insert：插入任务记录
-/// - db_outbox_insert：插入 Outbox 记录
-/// - db_tx_commit：提交事务
+/// - db_task_outbox_insert：同时插入任务和 Outbox
+///
+/// 单条 SQL 语句本身具有原子性，因此不再需要显式开启事务。
 pub async fn insert_task(
     pool: &PgPool,
     task: &BacktestTask,
     job: &BacktestJob,
     metrics: &Metrics,
 ) -> Result<(), String> {
+    // 在获取数据库连接之前完成 JSON 序列化。
     let started = Instant::now();
-    let job_json =
-        serde_json::to_string(job).map_err(|e| format!("序列化回测任务失败：{e}"))?;
+    let job_json = serde_json::to_string(job).map_err(|e| format!("序列化回测任务失败：{e}"))?;
     metrics.record_duration("db_serialize_job", started.elapsed());
 
-    // 单独测量连接池获取耗时。
+    // 获取连接。
     let started = Instant::now();
     let mut conn = pool
         .acquire()
@@ -68,23 +67,32 @@ pub async fn insert_task(
         .map_err(|e| format!("获取数据库连接失败：{e}"))?;
     metrics.record_duration("db_acquire_insert_task", started.elapsed());
 
-    // 开启事务。
+    // 一条 SQL 完成两次插入。
+    //
+    // 如果第二次 INSERT 失败，整条 SQL 都会回滚，
+    // 不会留下只有任务记录、没有 Outbox 事件的数据。
     let started = Instant::now();
-    let mut tx = (&mut *conn)
-        .begin()
-        .await
-        .map_err(|e| format!("开启任务事务失败：{e}"))?;
-    metrics.record_duration("db_tx_begin", started.elapsed());
 
-    // 插入任务记录。
-    let started = Instant::now();
     sqlx::query(
         r#"
-        INSERT INTO backtest_tasks (
-            id, dataset, strategy, short_window, long_window,
-            job_json, status, result_json, error
+        WITH inserted_task AS (
+            INSERT INTO backtest_tasks (
+                id,
+                dataset,
+                strategy,
+                short_window,
+                long_window,
+                job_json,
+                status,
+                result_json,
+                error
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL)
+            RETURNING id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL)
+        INSERT INTO backtest_outbox (task_id, payload)
+        SELECT id, $8
+        FROM inserted_task
         "#,
     )
     .bind(&task.id)
@@ -94,27 +102,12 @@ pub async fn insert_task(
     .bind(task.long_window.map(|v| v as i32))
     .bind(&job_json)
     .bind(status_to_str(task.status))
-    .execute(&mut *tx)
+    .bind(&job_json)
+    .execute(&mut *conn)
     .await
-    .map_err(|e| format!("保存回测任务失败：{e}"))?;
-    metrics.record_duration("db_task_insert", started.elapsed());
+    .map_err(|e| format!("保存回测任务及 Outbox 事件失败：{e}"))?;
 
-    // 插入 Outbox 事件。
-    let started = Instant::now();
-    sqlx::query("INSERT INTO backtest_outbox (task_id, payload) VALUES ($1, $2)")
-        .bind(&task.id)
-        .bind(&job_json)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| format!("保存 Outbox 事件失败：{e}"))?;
-    metrics.record_duration("db_outbox_insert", started.elapsed());
-
-    // 提交事务。
-    let started = Instant::now();
-    tx.commit()
-        .await
-        .map_err(|e| format!("提交任务事务失败：{e}"))?;
-    metrics.record_duration("db_tx_commit", started.elapsed());
+    metrics.record_duration("db_task_outbox_insert", started.elapsed());
 
     Ok(())
 }
@@ -186,10 +179,7 @@ pub async fn reset_running_tasks(pool: &PgPool) -> Result<u64, sqlx::Error> {
 }
 
 /// 读取尚未收到 RabbitMQ Publisher Confirm 的 Outbox 事件。
-pub async fn list_pending_outbox(
-    pool: &PgPool,
-    limit: i64,
-) -> Result<Vec<OutboxMessage>, String> {
+pub async fn list_pending_outbox(pool: &PgPool, limit: i64) -> Result<Vec<OutboxMessage>, String> {
     let rows = sqlx::query(
         r#"
         SELECT task_id, payload
@@ -220,11 +210,34 @@ pub async fn list_pending_outbox(
     Ok(messages)
 }
 
-/// 收到 RabbitMQ Publisher Confirm 后，标记事件已发布。
-pub async fn mark_outbox_published(
+/// 批量标记已经收到 RabbitMQ Publisher Confirm 的 Outbox 事件。
+///
+/// 只更新尚未标记为 published 的记录。
+pub async fn mark_outbox_published_batch(
     pool: &PgPool,
-    task_id: &str,
-) -> Result<(), sqlx::Error> {
+    task_ids: &[String],
+) -> Result<u64, sqlx::Error> {
+    if task_ids.is_empty() {
+        return Ok(0);
+    }
+
+    let result = sqlx::query(
+        r#"
+        UPDATE backtest_outbox
+        SET published_at = NOW()
+        WHERE task_id = ANY($1)
+          AND published_at IS NULL
+        "#,
+    )
+    .bind(task_ids.to_vec())
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}
+
+/// 单条标记接口，保留以兼容其他调用位置。
+pub async fn mark_outbox_published(pool: &PgPool, task_id: &str) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         UPDATE backtest_outbox
@@ -241,17 +254,11 @@ pub async fn mark_outbox_published(
 }
 
 /// 原子认领任务。只有 queued 状态的任务才能转为 running。
-pub async fn claim_task(
-    pool: &PgPool,
-    id: &str,
-    metrics: &Metrics,
-) -> Result<bool, sqlx::Error> {
-    // 获取连接池连接。
+pub async fn claim_task(pool: &PgPool, id: &str, metrics: &Metrics) -> Result<bool, sqlx::Error> {
     let started = Instant::now();
     let mut conn = pool.acquire().await?;
     metrics.record_duration("db_acquire_claim_task", started.elapsed());
 
-    // 执行认领 SQL。
     let started = Instant::now();
     let result = sqlx::query(
         r#"
@@ -348,13 +355,11 @@ pub async fn mark_succeeded(
     execution_duration_ms: i64,
     metrics: &Metrics,
 ) -> Result<(), String> {
-    // 序列化结果。
     let started = Instant::now();
     let result_json =
         serde_json::to_string(result).map_err(|e| format!("序列化回测结果失败：{e}"))?;
     metrics.record_duration("db_serialize_result", started.elapsed());
 
-    // 获取连接池连接。
     let started = Instant::now();
     let mut conn = pool
         .acquire()
@@ -362,7 +367,6 @@ pub async fn mark_succeeded(
         .map_err(|e| format!("获取结果持久化连接失败：{e}"))?;
     metrics.record_duration("db_acquire_result_persist", started.elapsed());
 
-    // 更新任务结果。
     let started = Instant::now();
     let update = sqlx::query(
         r#"
@@ -400,12 +404,10 @@ pub async fn mark_failed(
     execution_duration_ms: Option<i64>,
     metrics: &Metrics,
 ) -> Result<(), sqlx::Error> {
-    // 获取连接池连接。
     let started = Instant::now();
     let mut conn = pool.acquire().await?;
     metrics.record_duration("db_acquire_result_persist", started.elapsed());
 
-    // 更新失败状态。
     let started = Instant::now();
     sqlx::query(
         r#"

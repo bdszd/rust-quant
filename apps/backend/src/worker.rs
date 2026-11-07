@@ -59,15 +59,7 @@ async fn persist_succeeded(
     loop {
         let persist_started = Instant::now();
 
-        match storage::mark_succeeded(
-            db,
-            id,
-            result,
-            execution_duration_ms,
-            metrics,
-        )
-        .await
-        {
+        match storage::mark_succeeded(db, id, result, execution_duration_ms, metrics).await {
             Ok(()) => {
                 metrics.record_duration("result_persist", persist_started.elapsed());
                 metrics.increment_tasks_succeeded();
@@ -94,15 +86,7 @@ async fn persist_failed(
     loop {
         let persist_started = Instant::now();
 
-        match storage::mark_failed(
-            db,
-            id,
-            message,
-            execution_duration_ms,
-            metrics,
-        )
-        .await
-        {
+        match storage::mark_failed(db, id, message, execution_duration_ms, metrics).await {
             Ok(()) => {
                 metrics.record_duration("result_persist", persist_started.elapsed());
                 metrics.increment_tasks_failed();
