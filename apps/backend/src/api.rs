@@ -153,6 +153,8 @@ pub async fn create_backtest(
     State(state): State<AppState>,
     Json(request): Json<RunBacktestRequest>,
 ) -> Result<(StatusCode, Json<BacktestTask>), (StatusCode, Json<ApiError>)> {
+    let request_started = std::time::Instant::now();
+
     validate_dataset_name(&request.dataset)
         .map_err(|message| api_error(StatusCode::BAD_REQUEST, message))?;
 
@@ -263,6 +265,7 @@ pub async fn create_backtest(
         })?;
 
     state.metrics.record_duration("db_insert_task", db_started.elapsed());
+    state.metrics.record_duration("api_create_backtest", request_started.elapsed());
     state.metrics.increment_tasks_accepted();
 
     Ok((StatusCode::ACCEPTED, Json(task)))
