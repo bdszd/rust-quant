@@ -27,6 +27,7 @@ Each populated stage reports `count`, `avg_ms`, `min_ms`, `max_ms`, `p50_ms`, `p
 
 | Stage | Measurement |
 | --- | --- |
+| `api_create_backtest` | Successful POST request from handler entry through task insertion |
 | `db_insert_task` | PostgreSQL transaction inserting task + Outbox |
 | `outbox_query` | Query for pending Outbox messages |
 | `rabbitmq_publish_confirm` | Publish and wait for RabbitMQ Publisher Confirm |
