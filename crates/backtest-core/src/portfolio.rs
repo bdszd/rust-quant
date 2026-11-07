@@ -36,10 +36,18 @@ impl Portfolio {
         }
     }
 
-    pub fn cash(&self) -> f64 { self.cash }
-    pub fn position(&self) -> u64 { self.position }
-    pub fn average_cost(&self) -> f64 { self.average_cost }
-    pub fn realized_pnl(&self) -> f64 { self.realized_pnl }
+    pub fn cash(&self) -> f64 {
+        self.cash
+    }
+    pub fn position(&self) -> u64 {
+        self.position
+    }
+    pub fn average_cost(&self) -> f64 {
+        self.average_cost
+    }
+    pub fn realized_pnl(&self) -> f64 {
+        self.realized_pnl
+    }
 
     /// 成交确认后更新持仓；买入成本包含该笔买入手续费。
     pub(crate) fn apply_buy(&mut self, quantity: u64, price: f64, fee: f64) {
@@ -76,7 +84,9 @@ impl Portfolio {
         let equity = self.cash + market_value;
         let daily_return = if self.previous_equity > 0.0 {
             equity / self.previous_equity - 1.0
-        } else { 0.0 };
+        } else {
+            0.0
+        };
         self.peak_equity = self.peak_equity.max(equity);
         let drawdown = if self.peak_equity > 0.0 {
             (self.peak_equity - equity) / self.peak_equity
