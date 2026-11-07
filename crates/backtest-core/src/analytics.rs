@@ -1,4 +1,4 @@
-use crate::{portfolio::PortfolioSnapshot, Trade};
+use crate::{Trade, portfolio::PortfolioSnapshot};
 use trading_core::Side;
 
 #[derive(Debug, Clone, Copy)]
@@ -26,11 +26,17 @@ pub fn calculate_full_metrics(
     trades: &[Trade],
 ) -> PerformanceMetrics {
     let final_equity = history.last().map(|s| s.equity).unwrap_or(initial_cash);
-    let total_return = if initial_cash > 0.0 { final_equity / initial_cash - 1.0 } else { 0.0 };
+    let total_return = if initial_cash > 0.0 {
+        final_equity / initial_cash - 1.0
+    } else {
+        0.0
+    };
     let periods = history.len();
     let annualized_return = if periods > 0 && initial_cash > 0.0 && final_equity > 0.0 {
         (final_equity / initial_cash).powf(252.0 / periods as f64) - 1.0
-    } else { 0.0 };
+    } else {
+        0.0
+    };
 
     let mut peak = initial_cash;
     let mut max_drawdown: f64 = 0.0;
@@ -42,7 +48,9 @@ pub fn calculate_full_metrics(
     }
 
     let returns: Vec<f64> = history.iter().map(|s| s.daily_return).collect();
-    let mean = if returns.is_empty() { 0.0 } else {
+    let mean = if returns.is_empty() {
+        0.0
+    } else {
         returns.iter().sum::<f64>() / returns.len() as f64
     };
     let variance = if returns.len() > 1 {
@@ -58,7 +66,10 @@ pub fn calculate_full_metrics(
     let mut closed_pnls = Vec::new();
     for trade in trades {
         match trade.side {
-            Side::Buy => open_lots.push((trade.quantity, trade.price * trade.quantity as f64 + trade.fee)),
+            Side::Buy => open_lots.push((
+                trade.quantity,
+                trade.price * trade.quantity as f64 + trade.fee,
+            )),
             Side::Sell => {
                 let mut remaining = trade.quantity;
                 let mut cost = 0.0;
@@ -67,7 +78,13 @@ pub fn calculate_full_metrics(
                     let matched = qty.min(remaining);
                     cost += total_cost * matched as f64 / qty as f64;
                     if qty > matched {
-                        open_lots.insert(0, (qty - matched, total_cost * (qty - matched) as f64 / qty as f64));
+                        open_lots.insert(
+                            0,
+                            (
+                                qty - matched,
+                                total_cost * (qty - matched) as f64 / qty as f64,
+                            ),
+                        );
                     }
                     remaining -= matched;
                 }
@@ -78,15 +95,34 @@ pub fn calculate_full_metrics(
         }
     }
     let winners: f64 = closed_pnls.iter().filter(|p| **p > 0.0).sum();
-    let losers: f64 = closed_pnls.iter().filter(|p| **p < 0.0).map(|p| p.abs()).sum();
-    let win_rate = if closed_pnls.is_empty() { 0.0 } else {
+    let losers: f64 = closed_pnls
+        .iter()
+        .filter(|p| **p < 0.0)
+        .map(|p| p.abs())
+        .sum();
+    let win_rate = if closed_pnls.is_empty() {
+        0.0
+    } else {
         closed_pnls.iter().filter(|p| **p > 0.0).count() as f64 / closed_pnls.len() as f64
     };
-    let profit_factor = if losers > 0.0 { winners / losers } else if winners > 0.0 { 999.0 } else { 0.0 };
+    let profit_factor = if losers > 0.0 {
+        winners / losers
+    } else if winners > 0.0 {
+        999.0
+    } else {
+        0.0
+    };
 
     PerformanceMetrics {
-        final_equity, total_return, annualized_return, max_drawdown,
-        annualized_volatility, sharpe_ratio, win_rate, profit_factor,
-        trade_count: trades.len(), closed_trade_count: closed_pnls.len(),
+        final_equity,
+        total_return,
+        annualized_return,
+        max_drawdown,
+        annualized_volatility,
+        sharpe_ratio,
+        win_rate,
+        profit_factor,
+        trade_count: trades.len(),
+        closed_trade_count: closed_pnls.len(),
     }
 }
