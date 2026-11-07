@@ -24,7 +24,12 @@ pub struct ExecutionModel {
 
 impl ExecutionModel {
     pub(crate) fn new(commission_rate: f64, slippage_rate: f64) -> Self {
-        Self { commission_rate, slippage_rate, next_order_id: 1, trades: Vec::new() }
+        Self {
+            commission_rate,
+            slippage_rate,
+            next_order_id: 1,
+            trades: Vec::new(),
+        }
     }
 
     pub fn execute(
@@ -35,7 +40,9 @@ impl ExecutionModel {
         date: &str,
         market_price: f64,
     ) -> Result<(), String> {
-        if signal == Signal::Hold { return Ok(()); }
+        if signal == Signal::Hold {
+            return Ok(());
+        }
         if !market_price.is_finite() || market_price <= 0.0 {
             return Err("成交参考价格必须是有限的正数".into());
         }
@@ -61,7 +68,9 @@ impl ExecutionModel {
             }
             Side::Sell => portfolio.position(),
         };
-        if quantity == 0 { return Ok(()); }
+        if quantity == 0 {
+            return Ok(());
+        }
 
         let order_id = self.allocate_order_id();
         let order = Order::market(order_id, symbol, side, quantity);
@@ -94,5 +103,7 @@ impl ExecutionModel {
         id
     }
 
-    pub fn trades(&self) -> &[Fill] { &self.trades }
+    pub fn trades(&self) -> &[Fill] {
+        &self.trades
+    }
 }
