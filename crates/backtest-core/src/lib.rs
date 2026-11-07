@@ -133,6 +133,9 @@ mod tests {
             initial_cash: 1000.0,
             commission_rate: 0.0,
             slippage_rate: 0.0,
+            lot_size: 1,
+            stamp_duty_rate: 0.0,
+            min_commission: 0.0,
             execution_mode: ExecutionMode::NextOpen,
         };
 
@@ -224,6 +227,9 @@ mod tests {
             initial_cash: 1000.0,
             commission_rate: -0.01,
             slippage_rate: 0.0,
+            lot_size: 1,
+            stamp_duty_rate: 0.0,
+            min_commission: 0.0,
             execution_mode: ExecutionMode::NextOpen,
         };
 
@@ -236,6 +242,9 @@ mod tests {
             initial_cash: 1000.0,
             commission_rate: 0.001,
             slippage_rate: 1.0,
+            lot_size: 1,
+            stamp_duty_rate: 0.0,
+            min_commission: 0.0,
             execution_mode: ExecutionMode::NextOpen,
         };
 
