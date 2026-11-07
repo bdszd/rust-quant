@@ -145,7 +145,12 @@ pub async fn prometheus_metrics(
         }
     }
 
-    ([(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")], body)
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        axum::http::HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
+    );
+    (headers, body)
 }
 
 pub async fn health() -> Json<serde_json::Value> {
