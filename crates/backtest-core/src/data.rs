@@ -98,13 +98,13 @@ pub fn validate_bars(bars: &[Bar]) -> Result<(), DataValidationError> {
                 message: "成交量必须是有限的非负数".into(),
             });
         }
-        if let Some(amount) = bar.amount {
-            if !amount.is_finite() || amount < 0.0 {
-                return Err(DataValidationError {
-                    row,
-                    message: "成交额必须是有限的非负数".into(),
-                });
-            }
+        if let Some(amount) = bar.amount
+            && (!amount.is_finite() || amount < 0.0)
+        {
+            return Err(DataValidationError {
+                row,
+                message: "成交额必须是有限的非负数".into(),
+            });
         }
     }
 
