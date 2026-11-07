@@ -50,13 +50,20 @@ pub struct ApiBacktestResult {
     pub initial_cash: f64,
     pub final_equity: f64,
     pub total_return: f64,
+    #[serde(default)]
     pub annualized_return: f64,
     pub max_drawdown: f64,
+    #[serde(default)]
     pub annualized_volatility: f64,
+    #[serde(default)]
     pub sharpe_ratio: f64,
+    #[serde(default)]
     pub win_rate: f64,
+    #[serde(default)]
     pub profit_factor: f64,
+    #[serde(default)]
     pub trade_count: usize,
+    #[serde(default)]
     pub closed_trade_count: usize,
     pub trades: Vec<ApiTrade>,
     pub history: Vec<ApiSnapshot>,
@@ -79,12 +86,18 @@ pub struct ApiSnapshot {
     pub cash: f64,
     pub position: u64,
     pub close: f64,
+    #[serde(default)]
     pub market_value: f64,
+    #[serde(default)]
     pub average_cost: f64,
+    #[serde(default)]
     pub unrealized_pnl: f64,
+    #[serde(default)]
     pub realized_pnl: f64,
     pub equity: f64,
+    #[serde(default)]
     pub daily_return: f64,
+    #[serde(default)]
     pub drawdown: f64,
 }
 
