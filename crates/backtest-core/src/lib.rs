@@ -227,7 +227,13 @@ mod tests {
         assert!((portfolio.cash() - 995.0).abs() < 1e-9);
 
         execution
-            .execute(&mut portfolio, Signal::Sell, "000001.SZ", "2025-01-03", 11.0)
+            .execute(
+                &mut portfolio,
+                Signal::Sell,
+                "000001.SZ",
+                "2025-01-03",
+                11.0,
+            )
             .unwrap();
 
         let sell = &execution.trades()[1];
