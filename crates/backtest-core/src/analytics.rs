@@ -55,7 +55,9 @@ pub fn calculate_full_metrics(
     };
     let variance = if returns.len() > 1 {
         returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / (returns.len() - 1) as f64
-    } else { 0.0 };
+    } else {
+        0.0
+    };
     let annualized_volatility = variance.sqrt() * 252.0_f64.sqrt();
     let sharpe_ratio = if annualized_volatility > f64::EPSILON {
         mean * 252.0_f64.sqrt() / variance.sqrt()
