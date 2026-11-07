@@ -112,7 +112,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/metrics", get(api::get_metrics))
         .route("/metrics", get(api::prometheus_metrics))
         .route("/api/datasets", get(api::list_datasets))
-        .route("/api/backtests", get(api::list_backtests).post(api::create_backtest))
+        .route(
+            "/api/backtests",
+            get(api::list_backtests).post(api::create_backtest),
+        )
         .route("/api/backtests/{id}", get(api::get_backtest))
         .with_state(state)
         .layer(CorsLayer::permissive());
