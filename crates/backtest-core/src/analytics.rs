@@ -82,7 +82,7 @@ pub fn calculate_full_metrics(
     let win_rate = if closed_pnls.is_empty() { 0.0 } else {
         closed_pnls.iter().filter(|p| **p > 0.0).count() as f64 / closed_pnls.len() as f64
     };
-    let profit_factor = if losers > 0.0 { winners / losers } else if winners > 0.0 { f64::INFINITY } else { 0.0 };
+    let profit_factor = if losers > 0.0 { winners / losers } else if winners > 0.0 { 999.0 } else { 0.0 };
 
     PerformanceMetrics {
         final_equity, total_return, annualized_return, max_drawdown,
