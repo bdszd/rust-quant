@@ -34,6 +34,18 @@ fn default_strategy() -> String {
     "sma_cross".to_string()
 }
 
+fn default_lot_size() -> u64 {
+    100
+}
+
+fn default_stamp_duty_rate() -> f64 {
+    0.0005
+}
+
+fn default_min_commission() -> f64 {
+    5.0
+}
+
 #[derive(Debug, Deserialize)]
 pub struct RunBacktestRequest {
     dataset: String,
@@ -41,6 +53,15 @@ pub struct RunBacktestRequest {
     commission_rate: f64,
     slippage_rate: f64,
     execution_mode: String,
+
+    #[serde(default = "default_lot_size")]
+    lot_size: u64,
+
+    #[serde(default = "default_stamp_duty_rate")]
+    stamp_duty_rate: f64,
+
+    #[serde(default = "default_min_commission")]
+    min_commission: f64,
 
     #[serde(default = "default_strategy")]
     strategy: String,
@@ -361,6 +382,26 @@ pub async fn create_backtest(
         ));
     }
 
+    if request.lot_size == 0 {
+        return Err(api_error(StatusCode::BAD_REQUEST, "每手股数必须大于 0"));
+    }
+
+    if !request.stamp_duty_rate.is_finite()
+        || !(0.0..1.0).contains(&request.stamp_duty_rate)
+    {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "印花税率必须大于等于 0 且小于 1",
+        ));
+    }
+
+    if !request.min_commission.is_finite() || request.min_commission < 0.0 {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "最低佣金必须是有限的非负数",
+        ));
+    }
+
     let execution_mode = match request.execution_mode.as_str() {
         "next_open" => ExecutionMode::NextOpen,
         "next_close" => ExecutionMode::NextClose,
@@ -429,6 +470,9 @@ pub async fn create_backtest(
         initial_cash: request.initial_cash,
         commission_rate: request.commission_rate,
         slippage_rate: request.slippage_rate,
+        lot_size: request.lot_size,
+        stamp_duty_rate: request.stamp_duty_rate,
+        min_commission: request.min_commission,
         execution_mode,
         strategy,
         short_window,
