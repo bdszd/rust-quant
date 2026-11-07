@@ -157,8 +157,6 @@ pub async fn worker_loop(
         metrics.rabbitmq_connection_opened();
         println!("Worker {worker_id} 已连接 RabbitMQ，开始消费任务");
 
-        let mut reconnect = false;
-
         loop {
             tokio::select! {
                 changed = shutdown.changed() => {
@@ -177,14 +175,12 @@ pub async fn worker_loop(
                 delivery = consumer.next() => {
                     match delivery {
                         Some(Ok(delivery)) => {
-                            if !process_delivery(&db, delivery, &metrics).await {
-                                reconnect = true;
+                            if !process_delivery(&db, delivery, metrics.clone()).await {
                                 break;
                             }
                         }
                         Some(Err(error)) => {
                             eprintln!("Worker {worker_id} 接收消息失败：{error}");
-                            reconnect = true;
                             break;
                         }
                         None => {
@@ -202,7 +198,7 @@ pub async fn worker_loop(
         drop(channel);
         drop(connection);
 
-        if reconnect && wait_or_shutdown(&mut shutdown).await {
+        if wait_or_shutdown(&mut shutdown).await {
             break;
         }
     }
@@ -210,7 +206,7 @@ pub async fn worker_loop(
     println!("Worker {worker_id} 已退出");
 }
 
-async fn process_delivery(db: &PgPool, delivery: Delivery, metrics: &Metrics) -> bool {
+async fn process_delivery(db: &PgPool, delivery: Delivery, metrics: Arc<Metrics>) -> bool {
     metrics.increment_consume_total();
     let job: BacktestJob = match serde_json::from_slice(&delivery.data) {
         Ok(job) => job,
