@@ -1,6 +1,10 @@
-use crate::tasks::{ApiBacktestResult, BacktestJob, BacktestTask, TaskStatus};
+use crate::{
+    metrics::Metrics,
+    tasks::{ApiBacktestResult, BacktestJob, BacktestTask, TaskStatus},
+};
 
-use sqlx::{PgPool, Row, postgres::PgPoolOptions};
+use sqlx::{Acquire, PgPool, Row, postgres::PgPoolOptions};
+use std::time::Instant;
 
 #[derive(Debug)]
 pub struct OutboxMessage {
@@ -37,18 +41,43 @@ fn status_from_str(status: &str) -> Result<TaskStatus, String> {
 }
 
 /// 在同一个 PostgreSQL 事务中写入任务和 Outbox 事件。
+///
+/// 细分统计：
+/// - db_serialize_job：任务 JSON 序列化
+/// - db_acquire_insert_task：获取连接池连接
+/// - db_tx_begin：开启事务
+/// - db_task_insert：插入任务记录
+/// - db_outbox_insert：插入 Outbox 记录
+/// - db_tx_commit：提交事务
 pub async fn insert_task(
     pool: &PgPool,
     task: &BacktestTask,
     job: &BacktestJob,
+    metrics: &Metrics,
 ) -> Result<(), String> {
-    let job_json = serde_json::to_string(job).map_err(|e| format!("序列化回测任务失败：{e}"))?;
+    let started = Instant::now();
+    let job_json =
+        serde_json::to_string(job).map_err(|e| format!("序列化回测任务失败：{e}"))?;
+    metrics.record_duration("db_serialize_job", started.elapsed());
 
-    let mut tx = pool
+    // 单独测量连接池获取耗时。
+    let started = Instant::now();
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| format!("获取数据库连接失败：{e}"))?;
+    metrics.record_duration("db_acquire_insert_task", started.elapsed());
+
+    // 开启事务。
+    let started = Instant::now();
+    let mut tx = (&mut *conn)
         .begin()
         .await
         .map_err(|e| format!("开启任务事务失败：{e}"))?;
+    metrics.record_duration("db_tx_begin", started.elapsed());
 
+    // 插入任务记录。
+    let started = Instant::now();
     sqlx::query(
         r#"
         INSERT INTO backtest_tasks (
@@ -68,17 +97,24 @@ pub async fn insert_task(
     .execute(&mut *tx)
     .await
     .map_err(|e| format!("保存回测任务失败：{e}"))?;
+    metrics.record_duration("db_task_insert", started.elapsed());
 
+    // 插入 Outbox 事件。
+    let started = Instant::now();
     sqlx::query("INSERT INTO backtest_outbox (task_id, payload) VALUES ($1, $2)")
         .bind(&task.id)
         .bind(&job_json)
         .execute(&mut *tx)
         .await
         .map_err(|e| format!("保存 Outbox 事件失败：{e}"))?;
+    metrics.record_duration("db_outbox_insert", started.elapsed());
 
+    // 提交事务。
+    let started = Instant::now();
     tx.commit()
         .await
         .map_err(|e| format!("提交任务事务失败：{e}"))?;
+    metrics.record_duration("db_tx_commit", started.elapsed());
 
     Ok(())
 }
@@ -150,7 +186,10 @@ pub async fn reset_running_tasks(pool: &PgPool) -> Result<u64, sqlx::Error> {
 }
 
 /// 读取尚未收到 RabbitMQ Publisher Confirm 的 Outbox 事件。
-pub async fn list_pending_outbox(pool: &PgPool, limit: i64) -> Result<Vec<OutboxMessage>, String> {
+pub async fn list_pending_outbox(
+    pool: &PgPool,
+    limit: i64,
+) -> Result<Vec<OutboxMessage>, String> {
     let rows = sqlx::query(
         r#"
         SELECT task_id, payload
@@ -182,7 +221,10 @@ pub async fn list_pending_outbox(pool: &PgPool, limit: i64) -> Result<Vec<Outbox
 }
 
 /// 收到 RabbitMQ Publisher Confirm 后，标记事件已发布。
-pub async fn mark_outbox_published(pool: &PgPool, task_id: &str) -> Result<(), sqlx::Error> {
+pub async fn mark_outbox_published(
+    pool: &PgPool,
+    task_id: &str,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         UPDATE backtest_outbox
@@ -199,7 +241,18 @@ pub async fn mark_outbox_published(pool: &PgPool, task_id: &str) -> Result<(), s
 }
 
 /// 原子认领任务。只有 queued 状态的任务才能转为 running。
-pub async fn claim_task(pool: &PgPool, id: &str) -> Result<bool, sqlx::Error> {
+pub async fn claim_task(
+    pool: &PgPool,
+    id: &str,
+    metrics: &Metrics,
+) -> Result<bool, sqlx::Error> {
+    // 获取连接池连接。
+    let started = Instant::now();
+    let mut conn = pool.acquire().await?;
+    metrics.record_duration("db_acquire_claim_task", started.elapsed());
+
+    // 执行认领 SQL。
+    let started = Instant::now();
     let result = sqlx::query(
         r#"
         UPDATE backtest_tasks
@@ -216,8 +269,9 @@ pub async fn claim_task(pool: &PgPool, id: &str) -> Result<bool, sqlx::Error> {
         "#,
     )
     .bind(id)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
+    metrics.record_duration("db_claim_update", started.elapsed());
 
     Ok(result.rows_affected() == 1)
 }
@@ -292,10 +346,24 @@ pub async fn mark_succeeded(
     id: &str,
     result: &ApiBacktestResult,
     execution_duration_ms: i64,
+    metrics: &Metrics,
 ) -> Result<(), String> {
+    // 序列化结果。
+    let started = Instant::now();
     let result_json =
         serde_json::to_string(result).map_err(|e| format!("序列化回测结果失败：{e}"))?;
+    metrics.record_duration("db_serialize_result", started.elapsed());
 
+    // 获取连接池连接。
+    let started = Instant::now();
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| format!("获取结果持久化连接失败：{e}"))?;
+    metrics.record_duration("db_acquire_result_persist", started.elapsed());
+
+    // 更新任务结果。
+    let started = Instant::now();
     let update = sqlx::query(
         r#"
         UPDATE backtest_tasks
@@ -312,9 +380,10 @@ pub async fn mark_succeeded(
     .bind(result_json)
     .bind(execution_duration_ms)
     .bind(id)
-    .execute(pool)
+    .execute(&mut *conn)
     .await
     .map_err(|e| format!("保存回测结果失败：{e}"))?;
+    metrics.record_duration("db_result_update", started.elapsed());
 
     if update.rows_affected() != 1 {
         return Err(format!("任务 {id} 不处于 running 状态，未能保存成功结果"));
@@ -329,7 +398,15 @@ pub async fn mark_failed(
     id: &str,
     message: &str,
     execution_duration_ms: Option<i64>,
+    metrics: &Metrics,
 ) -> Result<(), sqlx::Error> {
+    // 获取连接池连接。
+    let started = Instant::now();
+    let mut conn = pool.acquire().await?;
+    metrics.record_duration("db_acquire_result_persist", started.elapsed());
+
+    // 更新失败状态。
+    let started = Instant::now();
     sqlx::query(
         r#"
         UPDATE backtest_tasks
@@ -346,8 +423,9 @@ pub async fn mark_failed(
     .bind(message)
     .bind(execution_duration_ms)
     .bind(id)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
+    metrics.record_duration("db_result_update", started.elapsed());
 
     Ok(())
 }

@@ -67,7 +67,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let publisher_metrics = metrics.clone();
 
     let publisher_handle = tokio::spawn(async move {
-        publisher_loop(publisher_db, publisher_amqp_addr, publisher_shutdown, publisher_metrics).await;
+        publisher_loop(
+            publisher_db,
+            publisher_amqp_addr,
+            publisher_shutdown,
+            publisher_metrics,
+        )
+        .await;
     });
 
     // 7. 启动固定数量的 RabbitMQ Consumer。
@@ -80,14 +86,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let worker_metrics = metrics.clone();
 
         let handle = tokio::spawn(async move {
-            worker_loop(worker_id, worker_db, worker_amqp_addr, worker_shutdown, worker_metrics).await;
+            worker_loop(
+                worker_id,
+                worker_db,
+                worker_amqp_addr,
+                worker_shutdown,
+                worker_metrics,
+            )
+            .await;
         });
 
         worker_handles.push(handle);
     }
 
     // 8. 创建应用状态。
-    let state = AppState { data_dir, db, metrics };
+    let state = AppState {
+        data_dir,
+        db,
+        metrics,
+    };
 
     // 9. 注册 HTTP 路由。
     let app = Router::new()

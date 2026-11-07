@@ -16,7 +16,10 @@ use lapin::{
 };
 use sqlx::PgPool;
 use std::cmp;
-use std::{sync::Arc, time::{Duration, Instant}};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::watch;
 
 const INITIAL_RETRY_DELAY: Duration = Duration::from_millis(100);
@@ -55,7 +58,16 @@ async fn persist_succeeded(
 
     loop {
         let persist_started = Instant::now();
-        match storage::mark_succeeded(db, id, result, execution_duration_ms).await {
+
+        match storage::mark_succeeded(
+            db,
+            id,
+            result,
+            execution_duration_ms,
+            metrics,
+        )
+        .await
+        {
             Ok(()) => {
                 metrics.record_duration("result_persist", persist_started.elapsed());
                 metrics.increment_tasks_succeeded();
@@ -70,12 +82,27 @@ async fn persist_succeeded(
     }
 }
 
-async fn persist_failed(db: &PgPool, id: &str, message: &str, execution_duration_ms: Option<i64>, metrics: &Metrics) {
+async fn persist_failed(
+    db: &PgPool,
+    id: &str,
+    message: &str,
+    execution_duration_ms: Option<i64>,
+    metrics: &Metrics,
+) {
     let mut retry = RetryDelay::new();
 
     loop {
         let persist_started = Instant::now();
-        match storage::mark_failed(db, id, message, execution_duration_ms).await {
+
+        match storage::mark_failed(
+            db,
+            id,
+            message,
+            execution_duration_ms,
+            metrics,
+        )
+        .await
+        {
             Ok(()) => {
                 metrics.record_duration("result_persist", persist_started.elapsed());
                 metrics.increment_tasks_failed();
@@ -204,6 +231,7 @@ pub async fn worker_loop(
 
 async fn process_delivery(db: &PgPool, delivery: Delivery, metrics: Arc<Metrics>) -> bool {
     metrics.increment_consume_total();
+
     let job: BacktestJob = match serde_json::from_slice(&delivery.data) {
         Ok(job) => job,
         Err(error) => {
@@ -220,11 +248,12 @@ async fn process_delivery(db: &PgPool, delivery: Delivery, metrics: Arc<Metrics>
 
     // 数据库状态是最终幂等依据。重复投递时，只有 queued 任务可以被认领。
     let claim_started = Instant::now();
+
     let claimed = {
         let mut retry = RetryDelay::new();
 
         loop {
-            match storage::claim_task(db, &id).await {
+            match storage::claim_task(db, &id, &metrics).await {
                 Ok(true) => {
                     println!("Worker 已认领任务 {id}");
                     break true;
@@ -242,16 +271,26 @@ async fn process_delivery(db: &PgPool, delivery: Delivery, metrics: Arc<Metrics>
     };
 
     metrics.record_duration("worker_claim", claim_started.elapsed());
+
     if !claimed {
         metrics.increment_tasks_duplicate();
+
         return match delivery.ack(BasicAckOptions::default()).await {
-            Ok(()) => { metrics.increment_ack_total(); true },
-            Err(_) => { metrics.increment_ack_failed(); false },
+            Ok(()) => {
+                metrics.increment_ack_total();
+                true
+            }
+            Err(_) => {
+                metrics.increment_ack_failed();
+                false
+            }
         };
     }
 
     metrics.worker_started();
+
     let execution_metrics = metrics.clone();
+
     let execution = tokio::task::spawn_blocking(move || {
         let started = Instant::now();
         let result = execute_job(job, execution_metrics);
@@ -279,7 +318,9 @@ async fn process_delivery(db: &PgPool, delivery: Delivery, metrics: Arc<Metrics>
 
     // 只有任务最终状态已经写入 PostgreSQL，才 ACK RabbitMQ 消息。
     metrics.worker_finished();
+
     let ack_started = Instant::now();
+
     match delivery.ack(BasicAckOptions::default()).await {
         Ok(()) => {
             metrics.record_duration("rabbitmq_ack", ack_started.elapsed());

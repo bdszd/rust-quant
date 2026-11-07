@@ -1,14 +1,14 @@
 use crate::{
     broker::{BACKTEST_QUEUE, connect_channel},
-    storage,
     metrics::Metrics,
+    storage,
 };
-use std::sync::Arc;
 use lapin::{
     BasicProperties,
     options::{BasicPublishOptions, ConfirmSelectOptions},
 };
 use sqlx::PgPool;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
 
@@ -19,7 +19,12 @@ const BATCH_SIZE: i64 = 32;
 /// 从 PostgreSQL Outbox 读取待发布任务，并投递到 RabbitMQ。
 ///
 /// 只有收到 RabbitMQ Publisher Confirm 后，才将 Outbox 记录标记为已发布。
-pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::Receiver<bool>, metrics: Arc<Metrics>) {
+pub async fn publisher_loop(
+    db: PgPool,
+    amqp_addr: String,
+    mut shutdown: watch::Receiver<bool>,
+    metrics: Arc<Metrics>,
+) {
     println!("Outbox Publisher 已启动");
 
     loop {
@@ -133,8 +138,8 @@ pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::
 async fn publish_one(channel: &lapin::Channel, payload: &str) -> Result<(), String> {
     let confirm = channel
         .basic_publish(
-            "".into(),
-            BACKTEST_QUEUE.into(),
+            "",
+            BACKTEST_QUEUE,
             BasicPublishOptions {
                 mandatory: true,
                 ..BasicPublishOptions::default()

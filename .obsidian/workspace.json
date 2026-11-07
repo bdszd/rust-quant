@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "discription/数据清洗/V1.md",
+                "file": "docs/engineering/Performance Test Report/增加Metrics模块.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "V1"
+              "title": "增加Metrics模块"
             }
           }
         ],
@@ -206,20 +206,24 @@
   },
   "active": "91ebac8697bb9f63",
   "lastOpenFiles": [
-    "discription/sedxaooIB",
-    "target/debug/deps/quant_backend-208c5281eb585270",
-    "target/debug/incremental/quant_backend-2tfo3uszd3pkk/s-hnvo89rj5x-0gt7inf-58g7rtw0hkpfk2mcmyelu0pji/9ypa96wa3oyqludffy2hju1ve.o",
-    "target/debug/incremental/quant_backend-2tfo3uszd3pkk/s-hnvo89rj5x-0gt7inf-58g7rtw0hkpfk2mcmyelu0pji/work-products.bin",
-    "target/debug/incremental/quant_backend-2tfo3uszd3pkk/s-hnvo89rj5x-0gt7inf-58g7rtw0hkpfk2mcmyelu0pji/query-cache.bin",
-    "target/debug/incremental/quant_backend-2tfo3uszd3pkk/s-hnvo89rj5x-0gt7inf-58g7rtw0hkpfk2mcmyelu0pji/ez160xeabqezn1fkhoehj5rqx.o",
-    "target/debug/incremental/quant_backend-2tfo3uszd3pkk/s-hnvo89rj5x-0gt7inf-58g7rtw0hkpfk2mcmyelu0pji/evqsmon6l47s2njcsadzlkz0x.o",
-    "target/debug/incremental/quant_backend-2tfo3uszd3pkk/s-hnvo89rj5x-0gt7inf-58g7rtw0hkpfk2mcmyelu0pji/eubxu8h3j42mojqftculzw0i7.o",
-    "target/debug/incremental/quant_backend-2tfo3uszd3pkk/s-hnvo89rj5x-0gt7inf-58g7rtw0hkpfk2mcmyelu0pji/etffbm1rmb78umq7eqae1ufyn.o",
-    "target/debug/incremental/quant_backend-2tfo3uszd3pkk/s-hnvo89rj5x-0gt7inf-58g7rtw0hkpfk2mcmyelu0pji/etcv7ectz4piba5ohy8ni81zc.o",
-    "target/debug/incremental/quant_backend-2tfo3uszd3pkk/s-hnvo89rj5x-0gt7inf-58g7rtw0hkpfk2mcmyelu0pji/esmnxcnpfuphad1opyi318ptg.o",
+    "target/debug/deps/quant_backend-cc26bc5298093d66",
+    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hnxr0aavvo-0028wua-6mr304p26mxbjwk9l8216no3u/work-products.bin",
+    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hnxr0aavvo-0028wua-6mr304p26mxbjwk9l8216no3u/query-cache.bin",
+    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hnxr0aavvo-0028wua-6mr304p26mxbjwk9l8216no3u/f2w7yp5t5uksih564vk6zl259.o",
+    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hnxr0aavvo-0028wua-6mr304p26mxbjwk9l8216no3u/f2554dwb3xv1qdhpy7erdbqd4.o",
+    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hnxr0aavvo-0028wua-6mr304p26mxbjwk9l8216no3u/f24poev0gxmysxq9v3ypp219d.o",
+    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hnxr0aavvo-0028wua-6mr304p26mxbjwk9l8216no3u/f1q3cvj5duxgqvc8g50chu81l.o",
+    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hnxr0aavvo-0028wua-6mr304p26mxbjwk9l8216no3u/ez3dvmf6jrtvxoqwyt63sbhwd.o",
+    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hnxr0aavvo-0028wua-6mr304p26mxbjwk9l8216no3u/ew9nfyqur2i5e13c75ybqn7dz.o",
+    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hnxr0aavvo-0028wua-6mr304p26mxbjwk9l8216no3u/evbvgjwgfer86tvmg98w7odpj.o",
+    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hnxr0aavvo-0028wua-6mr304p26mxbjwk9l8216no3u/evaf8lka3ztjgj2tk4wmb0j3i.o",
+    "docs/engineering/Performance Test Report/worker-scaling-test.md",
+    "docs/engineering/Performance Test Report/增加Metrics模块.md",
+    "docs/engineering/backend-metrics.md",
+    "docs/engineering/performance_baseline.md",
+    "discription/数据清洗/V1.md",
     "discription/index.md",
     "项目总览.md",
-    "discription/数据清洗/V1.md",
     "数据清洗.md",
     "数据清.md",
     "数据清 1.md",

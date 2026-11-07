@@ -11,7 +11,7 @@ pub async fn connect_channel(amqp_addr: &str) -> Result<(Connection, Channel), l
 
     channel
         .queue_declare(
-            BACKTEST_QUEUE.into(),
+            BACKTEST_QUEUE,
             QueueDeclareOptions {
                 durable: true,
                 ..QueueDeclareOptions::default()

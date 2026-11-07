@@ -61,8 +61,20 @@ fn api_error(status: StatusCode, message: impl Into<String>) -> (StatusCode, Jso
     )
 }
 
-pub async fn get_metrics(State(state): State<AppState>) -> Json<crate::metrics::MetricsSnapshot> {
-    Json(state.metrics.snapshot())
+pub async fn get_metrics(
+    State(state): State<AppState>,
+) -> Json<crate::metrics::MetricsSnapshot> {
+    let pool_size = state.db.size() as usize;
+    let pool_idle = state.db.num_idle();
+
+    let pool_stats = crate::metrics::DatabasePoolStats {
+        size: pool_size,
+        idle: pool_idle,
+        busy: pool_size.saturating_sub(pool_idle),
+        max_connections: state.db.options().get_max_connections() as usize,
+    };
+
+    Json(state.metrics.snapshot(pool_stats))
 }
 
 pub async fn health() -> Json<serde_json::Value> {
@@ -255,7 +267,7 @@ pub async fn create_backtest(
 
     // 任务记录和 Outbox 消息在同一个 PostgreSQL 事务中提交。
     let db_started = std::time::Instant::now();
-    storage::insert_task(&state.db, &task, &job)
+    storage::insert_task(&state.db, &task, &job, &state.metrics)
         .await
         .map_err(|message| {
             api_error(
@@ -265,7 +277,9 @@ pub async fn create_backtest(
         })?;
 
     state.metrics.record_duration("db_insert_task", db_started.elapsed());
-    state.metrics.record_duration("api_create_backtest", request_started.elapsed());
+    state
+        .metrics
+        .record_duration("api_create_backtest", request_started.elapsed());
     state.metrics.increment_tasks_accepted();
 
     Ok((StatusCode::ACCEPTED, Json(task)))
