@@ -118,8 +118,14 @@ impl Metrics {
 
     pub fn worker_started(&self) { self.active_workers.fetch_add(1, Ordering::Relaxed); }
     pub fn worker_finished(&self) { self.active_workers.fetch_sub(1, Ordering::Relaxed); }
-    pub fn set_rabbitmq_connected(&self, connected: bool) {
-        self.rabbitmq_connected.store(usize::from(connected), Ordering::Relaxed);
+    pub fn rabbitmq_connection_opened(&self) {
+        self.rabbitmq_connected.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn rabbitmq_connection_closed(&self) {
+        let _ = self.rabbitmq_connected.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+            Some(count.saturating_sub(1))
+        });
     }
 
     pub fn snapshot(&self) -> MetricsSnapshot {
