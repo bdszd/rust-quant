@@ -17,6 +17,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         initial_cash: 1000.0,
         commission_rate: 0.001,
         slippage_rate: 0.001,
+        lot_size: 1,
+        stamp_duty_rate: 0.0,
+        min_commission: 0.0,
         execution_mode: ExecutionMode::NextOpen,
     };
 
@@ -30,9 +33,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("初始资金：{:.3}", result.initial_cash);
     println!("手续费率：{:.3}%", config.commission_rate * 100.0);
     println!("滑点率：{:.3}%", config.slippage_rate * 100.0);
+    println!("每手股数：{}", config.lot_size);
+    println!("最低佣金：{:.3}", config.min_commission);
+    println!("卖出印花税率：{:.3}%", config.stamp_duty_rate * 100.0);
     println!("最终资产：{:.3}", result.final_equity);
     println!("总收益率：{:.3}%", result.total_return * 100.0);
+    println!("年化收益率：{:.3}%", result.annualized_return * 100.0);
     println!("最大回撤：{:.3}%", result.max_drawdown * 100.0);
+    println!("夏普比率：{:.3}", result.sharpe_ratio);
+    println!("胜率：{:.3}%", result.win_rate * 100.0);
     println!("成交笔数：{}", result.trades.len());
 
     println!("\n========== 交易记录 ==========");
