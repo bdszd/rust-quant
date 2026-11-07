@@ -61,7 +61,9 @@ pub fn calculate_full_metrics(
     let annualized_volatility = variance.sqrt() * 252.0_f64.sqrt();
     let sharpe_ratio = if annualized_volatility > f64::EPSILON {
         mean * 252.0_f64.sqrt() / variance.sqrt()
-    } else { 0.0 };
+    } else {
+        0.0
+    };
 
     // 单持仓 V1：按买入与后续卖出配对，手续费计入每笔完整交易盈亏。
     let mut open_lots: Vec<(u64, f64)> = Vec::new();
