@@ -145,13 +145,13 @@ mod tests {
         let mut portfolio = Portfolio::new(1000.0);
         let mut execution = ExecutionModel::new(0.0, 0.01);
 
-        execution.execute(&mut portfolio, Signal::Buy, "2025-01-01", 100.0);
+        execution.execute(&mut portfolio, Signal::Buy, "TEST", "2025-01-01", 100.0).unwrap();
 
         let buy = &execution.trades()[0];
         assert!((buy.price - 101.0).abs() < 1e-9);
         assert_eq!(buy.quantity, 9);
 
-        execution.execute(&mut portfolio, Signal::Sell, "2025-01-02", 100.0);
+        execution.execute(&mut portfolio, Signal::Sell, "TEST", "2025-01-02", 100.0).unwrap();
 
         let sell = &execution.trades()[1];
         assert!((sell.price - 99.0).abs() < 1e-9);
