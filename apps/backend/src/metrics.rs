@@ -180,7 +180,7 @@ impl Metrics {
     pub fn rabbitmq_connection_closed(&self) {
         let _ =
             self.rabbitmq_connected
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
                     Some(count.saturating_sub(1))
                 });
     }
@@ -192,9 +192,8 @@ impl Metrics {
             .map(|guard| {
                 guard
                     .iter()
-                    .filter_map(|(name, samples)| {
-                        (!samples.is_empty()).then(|| (name.clone(), calculate_stats(samples)))
-                    })
+                    .filter(|(_, samples)| !samples.is_empty())
+                    .map(|(name, samples)| (name.clone(), calculate_stats(samples)))
                     .collect()
             })
             .unwrap_or_default();
