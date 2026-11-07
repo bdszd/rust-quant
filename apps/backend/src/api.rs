@@ -457,6 +457,26 @@ pub async fn create_backtest(
     Ok((StatusCode::ACCEPTED, Json(task)))
 }
 
+// GET /api/backtests：最近 50 条回测任务。
+pub async fn list_backtests(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<BacktestTask>>, (StatusCode, Json<ApiError>)> {
+    let ids = storage::list_task_ids(&state.db, 50)
+        .await
+        .map_err(|message| api_error(StatusCode::INTERNAL_SERVER_ERROR, message))?;
+
+    let mut tasks = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Some(task) = storage::get_task(&state.db, &id)
+            .await
+            .map_err(|message| api_error(StatusCode::INTERNAL_SERVER_ERROR, message))?
+        {
+            tasks.push(task);
+        }
+    }
+    Ok(Json(tasks))
+}
+
 // GET /api/backtests/{id}
 pub async fn get_backtest(
     State(state): State<AppState>,
