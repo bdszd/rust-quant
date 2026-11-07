@@ -16,9 +16,18 @@ pub struct BacktestConfig {
 
 impl BacktestConfig {
     pub fn validate(&self) {
-        assert!(self.initial_cash.is_finite() && self.initial_cash > 0.0, "初始资金必须是有限的正数");
-        assert!(self.commission_rate.is_finite() && (0.0..1.0).contains(&self.commission_rate), "手续费率必须在 [0, 1) 范围内");
-        assert!(self.slippage_rate.is_finite() && (0.0..1.0).contains(&self.slippage_rate), "滑点率必须在 [0, 1) 范围内");
+        assert!(
+            self.initial_cash.is_finite() && self.initial_cash > 0.0,
+            "初始资金必须是有限的正数"
+        );
+        assert!(
+            self.commission_rate.is_finite() && (0.0..1.0).contains(&self.commission_rate),
+            "手续费率必须在 [0, 1) 范围内"
+        );
+        assert!(
+            self.slippage_rate.is_finite() && (0.0..1.0).contains(&self.slippage_rate),
+            "滑点率必须在 [0, 1) 范围内"
+        );
     }
 }
 
@@ -56,13 +65,15 @@ pub fn run<S: Strategy + ?Sized>(
             ExecutionMode::NextOpen => bar.open,
             ExecutionMode::NextClose => bar.close,
         };
-        execution.execute(
-            &mut portfolio,
-            pending_signal,
-            &bar.symbol,
-            &bar.date,
-            execution_price,
-        ).expect("回测成交执行失败");
+        execution
+            .execute(
+                &mut portfolio,
+                pending_signal,
+                &bar.symbol,
+                &bar.date,
+                execution_price,
+            )
+            .expect("回测成交执行失败");
 
         history.push(portfolio.snapshot(&bar.date, bar.close));
         pending_signal = strategy.on_bar(bar);
