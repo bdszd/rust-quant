@@ -61,6 +61,10 @@ fn api_error(status: StatusCode, message: impl Into<String>) -> (StatusCode, Jso
     )
 }
 
+pub async fn get_metrics(State(state): State<AppState>) -> Json<crate::metrics::MetricsSnapshot> {
+    Json(state.metrics.snapshot())
+}
+
 pub async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "status": "ok" }))
 }
@@ -248,6 +252,7 @@ pub async fn create_backtest(
     };
 
     // 任务记录和 Outbox 消息在同一个 PostgreSQL 事务中提交。
+    let db_started = std::time::Instant::now();
     storage::insert_task(&state.db, &task, &job)
         .await
         .map_err(|message| {
@@ -256,6 +261,9 @@ pub async fn create_backtest(
                 format!("无法保存回测任务：{message}"),
             )
         })?;
+
+    state.metrics.record_duration("db_insert_task", db_started.elapsed());
+    state.metrics.increment_tasks_accepted();
 
     Ok((StatusCode::ACCEPTED, Json(task)))
 }
