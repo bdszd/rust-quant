@@ -171,6 +171,30 @@ mod tests {
     }
 
     #[test]
+    fn applies_a_share_lot_minimum_commission_and_sell_stamp_duty() {
+        let mut portfolio = Portfolio::new(10_000.0);
+        let mut execution = ExecutionModel::new(0.0003, 0.0, 100, 0.0005, 5.0);
+
+        execution
+            .execute(&mut portfolio, Signal::Buy, "000001.SZ", "2025-01-02", 10.0)
+            .unwrap();
+
+        let buy = &execution.trades()[0];
+        assert_eq!(buy.quantity, 900);
+        assert!((buy.fee - 5.0).abs() < 1e-9);
+        assert!((portfolio.cash() - 995.0).abs() < 1e-9);
+
+        execution
+            .execute(&mut portfolio, Signal::Sell, "000001.SZ", "2025-01-03", 11.0)
+            .unwrap();
+
+        let sell = &execution.trades()[1];
+        assert_eq!(sell.quantity, 900);
+        assert!((sell.fee - 9.95).abs() < 1e-9);
+        assert!((portfolio.cash() - 10_885.05).abs() < 1e-9);
+    }
+
+    #[test]
     fn execution_modes_use_different_prices() {
         let mut bars = crossover_bars();
 
