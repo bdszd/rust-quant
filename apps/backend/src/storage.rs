@@ -3,7 +3,7 @@ use crate::{
     tasks::{ApiBacktestResult, BacktestJob, BacktestTask, TaskStatus},
 };
 
-use sqlx::{Acquire, PgPool, Row, postgres::PgPoolOptions};
+use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use std::time::Instant;
 
 #[derive(Debug)]
@@ -234,23 +234,6 @@ pub async fn mark_outbox_published_batch(
     .await?;
 
     Ok(result.rows_affected())
-}
-
-/// 单条标记接口，保留以兼容其他调用位置。
-pub async fn mark_outbox_published(pool: &PgPool, task_id: &str) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        r#"
-        UPDATE backtest_outbox
-        SET published_at = NOW()
-        WHERE task_id = $1
-          AND published_at IS NULL
-        "#,
-    )
-    .bind(task_id)
-    .execute(pool)
-    .await?;
-
-    Ok(())
 }
 
 /// 原子认领任务。只有 queued 状态的任务才能转为 running。
