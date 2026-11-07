@@ -1,8 +1,8 @@
 use crate::{
     backtest::execute_job,
     broker::{BACKTEST_QUEUE, connect_channel},
-    storage,
     metrics::Metrics,
+    storage,
     tasks::{ApiBacktestResult, BacktestJob},
 };
 use futures_util::StreamExt;
@@ -15,12 +15,9 @@ use lapin::{
     types::FieldTable,
 };
 use sqlx::PgPool;
-use std::{
-    cmp,
-    time::{Duration, Instant},
-};
+use std::cmp;
+use std::{sync::Arc, time::{Duration, Instant}};
 use tokio::sync::watch;
-use std::sync::Arc;
 
 const INITIAL_RETRY_DELAY: Duration = Duration::from_millis(100);
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(5);
@@ -185,7 +182,6 @@ pub async fn worker_loop(
                         }
                         None => {
                             println!("Worker {worker_id} 的 Consumer 已关闭");
-                            reconnect = true;
                             break;
                         }
                     }
@@ -267,17 +263,17 @@ async fn process_delivery(db: &PgPool, delivery: Delivery, metrics: Arc<Metrics>
     match execution {
         Ok((Ok(result), elapsed)) => {
             let duration_ms = duration_to_ms(elapsed);
-            persist_succeeded(db, &id, &result, duration_ms, metrics).await;
+            persist_succeeded(db, &id, &result, duration_ms, &metrics).await;
         }
         Ok((Err(message), elapsed)) => {
             let duration_ms = duration_to_ms(elapsed);
             eprintln!("任务 {id} 执行失败：{message}");
-            persist_failed(db, &id, &message, Some(duration_ms), metrics).await;
+            persist_failed(db, &id, &message, Some(duration_ms), &metrics).await;
         }
         Err(join_error) => {
             let message = format!("回测执行线程异常：{join_error}");
             eprintln!("任务 {id}：{message}");
-            persist_failed(db, &id, &message, None, metrics).await;
+            persist_failed(db, &id, &message, None, &metrics).await;
         }
     }
 
