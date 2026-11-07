@@ -12,7 +12,7 @@ use std::{env, path::PathBuf, sync::Arc};
 
 use axum::{
     Router,
-    routing::{get, post},
+    routing::get,
 };
 use tokio::sync::watch;
 use tower_http::cors::CorsLayer;
