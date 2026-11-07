@@ -10,7 +10,12 @@ static NEXT_TASK_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum TaskStatus { Queued, Running, Succeeded, Failed }
+pub enum TaskStatus {
+    Queued,
+    Running,
+    Succeeded,
+    Failed,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BacktestTask {
@@ -107,7 +112,10 @@ impl From<&Trade> for ApiTrade {
             order_id: trade.order_id,
             date: trade.date.clone(),
             symbol: trade.symbol.clone(),
-            side: match trade.side { Side::Buy => "buy".into(), Side::Sell => "sell".into() },
+            side: match trade.side {
+                Side::Buy => "buy".into(),
+                Side::Sell => "sell".into(),
+            },
             quantity: trade.quantity,
             price: trade.price,
             fee: trade.fee,
@@ -118,10 +126,17 @@ impl From<&Trade> for ApiTrade {
 impl From<&PortfolioSnapshot> for ApiSnapshot {
     fn from(s: &PortfolioSnapshot) -> Self {
         Self {
-            date: s.date.clone(), cash: s.cash, position: s.position, close: s.close,
-            market_value: s.market_value, average_cost: s.average_cost,
-            unrealized_pnl: s.unrealized_pnl, realized_pnl: s.realized_pnl,
-            equity: s.equity, daily_return: s.daily_return, drawdown: s.drawdown,
+            date: s.date.clone(),
+            cash: s.cash,
+            position: s.position,
+            close: s.close,
+            market_value: s.market_value,
+            average_cost: s.average_cost,
+            unrealized_pnl: s.unrealized_pnl,
+            realized_pnl: s.realized_pnl,
+            equity: s.equity,
+            daily_return: s.daily_return,
+            drawdown: s.drawdown,
         }
     }
 }
@@ -135,7 +150,11 @@ pub fn convert_result(
     result: &BacktestResult,
 ) -> ApiBacktestResult {
     ApiBacktestResult {
-        id, dataset, strategy, short_window, long_window,
+        id,
+        dataset,
+        strategy,
+        short_window,
+        long_window,
         initial_cash: result.initial_cash,
         final_equity: result.final_equity,
         total_return: result.total_return,
@@ -153,7 +172,10 @@ pub fn convert_result(
 }
 
 pub fn make_task_id() -> String {
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
     let sequence = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
     format!("bt-{timestamp}-{sequence}")
 }
