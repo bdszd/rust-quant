@@ -142,7 +142,7 @@ pub async fn worker_loop(
 
         let mut consumer = match channel
             .basic_consume(
-                BACKTEST_QUEUE.into(),
+                BACKTEST_QUEUE,
                 &consumer_tag,
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
