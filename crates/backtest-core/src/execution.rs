@@ -5,7 +5,12 @@ use trading_core::{Fill, Order, Side};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ExecutionMode { NextOpen, NextClose }
+pub enum ExecutionMode {
+    #[serde(alias = "NextOpen")]
+    NextOpen,
+    #[serde(alias = "NextClose")]
+    NextClose,
+}
 
 pub type Trade = Fill;
 
