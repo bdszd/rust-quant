@@ -11,6 +11,12 @@ pub struct BacktestConfig {
     pub commission_rate: f64,
     /// 0.001 表示 0.1%。
     pub slippage_rate: f64,
+    /// A 股通常为 100 股一手；设为 1 可用于不限制整手的市场/测试。
+    pub lot_size: u64,
+    /// 卖出印花税率，买入不收取。
+    pub stamp_duty_rate: f64,
+    /// 单笔最低佣金。
+    pub min_commission: f64,
     pub execution_mode: ExecutionMode,
 }
 
@@ -27,6 +33,15 @@ impl BacktestConfig {
         assert!(
             self.slippage_rate.is_finite() && (0.0..1.0).contains(&self.slippage_rate),
             "滑点率必须在 [0, 1) 范围内"
+        );
+        assert!(self.lot_size > 0, "每手股数必须大于 0");
+        assert!(
+            self.stamp_duty_rate.is_finite() && (0.0..1.0).contains(&self.stamp_duty_rate),
+            "印花税率必须在 [0, 1) 范围内"
+        );
+        assert!(
+            self.min_commission.is_finite() && self.min_commission >= 0.0,
+            "最低佣金必须是有限的非负数"
         );
     }
 }
@@ -56,7 +71,13 @@ pub fn run<S: Strategy + ?Sized>(
 ) -> BacktestResult {
     config.validate();
     let mut portfolio = Portfolio::new(config.initial_cash);
-    let mut execution = ExecutionModel::new(config.commission_rate, config.slippage_rate);
+    let mut execution = ExecutionModel::new(
+        config.commission_rate,
+        config.slippage_rate,
+        config.lot_size,
+        config.stamp_duty_rate,
+        config.min_commission,
+    );
     let mut history = Vec::with_capacity(bars.len());
     let mut pending_signal = Signal::Hold;
 
