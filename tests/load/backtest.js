@@ -19,9 +19,9 @@ if (!DATASET) {
 
 export const options = {
     stages: [
-        { duration: '10s', target: 1 },
-        { duration: '20s', target: 3 },
         { duration: '10s', target: 5 },
+        { duration: '20s', target: 10 },
+        { duration: '10s', target: 25 },
         { duration: '10s', target: 0 },
     ],
 

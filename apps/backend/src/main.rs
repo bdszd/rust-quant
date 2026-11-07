@@ -32,6 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .join("../..")
                 .join("data")
                 .join("cleaned")
+                .join("tushare")
         });
 
     std::fs::create_dir_all(&data_dir)?;

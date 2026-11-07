@@ -125,7 +125,7 @@ pub async fn worker_loop(
         let mut consumer = match channel
             .basic_consume(
                 BACKTEST_QUEUE.into(),
-                consumer_tag.clone().into(),
+                &consumer_tag,
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )
@@ -154,7 +154,7 @@ pub async fn worker_loop(
                     let _ = changed;
                     let _ = channel
                         .basic_cancel(
-                            consumer_tag.clone().into(),
+                            &consumer_tag,
                             BasicCancelOptions::default(),
                         )
                         .await;
@@ -202,10 +202,10 @@ async fn process_delivery(db: &PgPool, delivery: Delivery) -> bool {
         Ok(job) => job,
         Err(error) => {
             eprintln!("收到无法解析的 RabbitMQ 消息：{error}，拒绝该消息");
-            return matches!(
-                delivery.reject(BasicRejectOptions { requeue: false }).await,
-                Ok(true)
-            );
+            return delivery
+                .reject(BasicRejectOptions { requeue: false })
+                .await
+                .is_ok();
         }
     };
 
@@ -234,7 +234,7 @@ async fn process_delivery(db: &PgPool, delivery: Delivery) -> bool {
     };
 
     if !claimed {
-        return matches!(delivery.ack(BasicAckOptions::default()).await, Ok(true));
+        return delivery.ack(BasicAckOptions::default()).await.is_ok();
     }
 
     let execution = tokio::task::spawn_blocking(move || {
@@ -264,13 +264,9 @@ async fn process_delivery(db: &PgPool, delivery: Delivery) -> bool {
 
     // 只有任务最终状态已经写入 PostgreSQL，才 ACK RabbitMQ 消息。
     match delivery.ack(BasicAckOptions::default()).await {
-        Ok(true) => {
+        Ok(()) => {
             println!("任务 {id} 已 ACK");
             true
-        }
-        Ok(false) => {
-            eprintln!("任务 {id} 的 ACK 未生效");
-            false
         }
         Err(error) => {
             eprintln!("任务 {id} 结果已持久化，但 ACK 失败：{error}");
