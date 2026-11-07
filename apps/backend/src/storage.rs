@@ -283,6 +283,17 @@ pub async fn claim_task(pool: &PgPool, id: &str, metrics: &Metrics) -> Result<bo
     Ok(result.rows_affected() == 1)
 }
 
+/// 最近回测任务 ID，供工作台展示历史记录。
+pub async fn list_task_ids(pool: &PgPool, limit: i64) -> Result<Vec<String>, String> {
+    sqlx::query_scalar(
+        "SELECT id FROM backtest_tasks ORDER BY created_at DESC LIMIT $1"
+    )
+    .bind(limit.clamp(1, 100))
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("查询回测历史失败：{e}"))
+}
+
 pub async fn get_task(pool: &PgPool, id: &str) -> Result<Option<BacktestTask>, String> {
     let row = sqlx::query(
         r#"
