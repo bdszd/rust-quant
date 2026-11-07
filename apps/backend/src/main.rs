@@ -119,7 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 10. 启动 HTTP 服务，监听 Ctrl+C。
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;
-    println!("Backend listening on http://127.0.0.1:8000");
+    println!("Backend listening on http://0.0.0.0:8000");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
