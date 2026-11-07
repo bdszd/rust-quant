@@ -1,7 +1,9 @@
 use crate::{
     broker::{BACKTEST_QUEUE, connect_channel},
     storage,
+    metrics::Metrics,
 };
+use std::sync::Arc;
 use lapin::{
     BasicProperties,
     options::{BasicPublishOptions, ConfirmSelectOptions},
@@ -17,7 +19,7 @@ const BATCH_SIZE: i64 = 32;
 /// 从 PostgreSQL Outbox 读取待发布任务，并投递到 RabbitMQ。
 ///
 /// 只有收到 RabbitMQ Publisher Confirm 后，才将 Outbox 记录标记为已发布。
-pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::Receiver<bool>) {
+pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::Receiver<bool>, metrics: Arc<Metrics>) {
     println!("Outbox Publisher 已启动");
 
     loop {
@@ -50,6 +52,7 @@ pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::
             continue;
         }
 
+        metrics.set_rabbitmq_connected(true);
         println!("Outbox Publisher 已连接 RabbitMQ");
 
         let mut reconnect = false;
@@ -62,6 +65,7 @@ pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::
                 }
 
                 _ = tokio::time::sleep(PUBLISH_INTERVAL) => {
+                    let query_started = std::time::Instant::now();
                     let messages = match storage::list_pending_outbox(&db, BATCH_SIZE).await {
                         Ok(messages) => messages,
                         Err(error) => {
@@ -70,8 +74,17 @@ pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::
                         }
                     };
 
+                    metrics.record_duration("outbox_query", query_started.elapsed());
+
                     for message in messages {
+                        let publish_started = std::time::Instant::now();
+                        metrics.increment_publish_total();
                         if let Err(error) = publish_one(&channel, &message.payload).await {
+                            metrics.increment_publish_failed();
+                            if error.contains("NACK") || error.contains("Confirm") {
+                                metrics.increment_publish_confirm_failed();
+                            }
+                            metrics.record_duration("rabbitmq_publish_confirm", publish_started.elapsed());
                             eprintln!(
                                 "发布任务 {} 到 RabbitMQ 失败：{error}，准备重新连接",
                                 message.task_id
@@ -80,6 +93,8 @@ pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::
                             break;
                         }
 
+                        metrics.record_duration("rabbitmq_publish_confirm", publish_started.elapsed());
+                        let update_started = std::time::Instant::now();
                         if let Err(error) =
                             storage::mark_outbox_published(&db, &message.task_id).await
                         {
@@ -95,12 +110,14 @@ pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::
                     }
 
                     if reconnect {
+                        metrics.set_rabbitmq_connected(false);
                         break;
                     }
                 }
             }
         }
 
+        metrics.set_rabbitmq_connected(false);
         drop(channel);
         drop(connection);
 
