@@ -91,11 +91,13 @@ impl Portfolio {
         let drawdown = if self.peak_equity > 0.0 {
             (self.peak_equity - equity) / self.peak_equity
         } else {
-        0.0
-    };
+            0.0
+        };
         let unrealized_pnl = if self.position > 0 {
             (close - self.average_cost) * self.position as f64
-        } else { 0.0 };
+        } else {
+            0.0
+        };
         self.previous_equity = equity;
 
         PortfolioSnapshot {
