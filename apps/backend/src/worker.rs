@@ -154,7 +154,7 @@ pub async fn worker_loop(
             }
         };
 
-        metrics.set_rabbitmq_connected(true);
+        metrics.rabbitmq_connection_opened();
         println!("Worker {worker_id} 已连接 RabbitMQ，开始消费任务");
 
         let mut reconnect = false;
@@ -170,6 +170,7 @@ pub async fn worker_loop(
                         )
                         .await;
                     println!("Worker {worker_id} 收到关闭信号");
+                    metrics.rabbitmq_connection_closed();
                     return;
                 }
 
@@ -196,7 +197,7 @@ pub async fn worker_loop(
             }
         }
 
-        metrics.set_rabbitmq_connected(false);
+        metrics.rabbitmq_connection_closed();
         drop(consumer);
         drop(channel);
         drop(connection);
