@@ -26,6 +26,9 @@ mod tests {
             initial_cash: 1000.0,
             commission_rate: 0.001,
             slippage_rate: 0.0,
+            lot_size: 1,
+            stamp_duty_rate: 0.0,
+            min_commission: 0.0,
             execution_mode: ExecutionMode::NextOpen,
         }
     }
@@ -143,7 +146,7 @@ mod tests {
     #[test]
     fn slippage_changes_actual_fill_prices() {
         let mut portfolio = Portfolio::new(1000.0);
-        let mut execution = ExecutionModel::new(0.0, 0.01);
+        let mut execution = ExecutionModel::new(0.0, 0.01, 1, 0.0, 0.0);
 
         execution
             .execute(&mut portfolio, Signal::Buy, "TEST", "2025-01-01", 100.0)
