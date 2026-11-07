@@ -110,6 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/api/health", get(api::health))
         .route("/api/metrics", get(api::get_metrics))
+        .route("/metrics", get(api::prometheus_metrics))
         .route("/api/datasets", get(api::list_datasets))
         .route("/api/backtests", post(api::create_backtest))
         .route("/api/backtests/{id}", get(api::get_backtest))
@@ -117,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(CorsLayer::permissive());
 
     // 10. 启动 HTTP 服务，监听 Ctrl+C。
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:8000").await?;
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;
     println!("Backend listening on http://127.0.0.1:8000");
 
     axum::serve(listener, app)
