@@ -150,6 +150,14 @@ export default function App() {
     () => compareIds.map(id => history.find(item => item.id === id)?.result).filter((item): item is BacktestResult => Boolean(item)),
     [compareIds, history]
   );
+  const comparisonRows: { label: string; value: (item: BacktestResult) => string }[] = [
+    { label: "总收益率", value: item => pct(item.total_return) },
+    { label: "年化收益率", value: item => pct(item.annualized_return) },
+    { label: "最大回撤", value: item => pct(item.max_drawdown) },
+    { label: "夏普比率", value: item => item.sharpe_ratio.toFixed(3) },
+    { label: "胜率", value: item => pct(item.win_rate) },
+    { label: "成交次数", value: item => String(item.trade_count) },
+  ];
 
   const titles: Record<Page, string> = {
     overview: "研究概览", new: "创建回测", datasets: "数据集管理",
@@ -237,7 +245,7 @@ export default function App() {
           <p className="muted-copy">选择已完成的回测任务，横向比较收益和风险指标。</p>
           <div className="compare-picker">{completed.map(item => <label key={item.id}><input type="checkbox" checked={compareIds.includes(item.id)} onChange={e => setCompareIds(current => e.target.checked ? [...current, item.id].slice(-4) : current.filter(id => id !== item.id))}/><span>{strategyName(item.strategy)} · {item.dataset} · {item.id.slice(-8)}</span></label>)}</div>
           {compareResults.length > 0 ? <div className="table-wrap"><table><thead><tr><th>指标</th>{compareResults.map(r => <th key={r.id}>{strategyName(r.strategy)}<small className="table-sub">{r.id.slice(-8)}</small></th>)}</tr></thead><tbody>
-            {([["总收益率","total_return",pct],["年化收益率","annualized_return",pct],["最大回撤","max_drawdown",pct],["夏普比率","sharpe_ratio",(v:number)=>v.toFixed(3)],["胜率","win_rate",pct],["成交次数","trade_count",(v:number)=>String(v)]] as const).map(([label,key,format]) => <tr key={label}><td>{label}</td>{compareResults.map(r => <td key={r.id}>{format(r[key] as never)}</td>)}</tr>)}
+            {comparisonRows.map(row => <tr key={row.label}><td>{row.label}</td>{compareResults.map(r => <td key={r.id}>{row.value(r)}</td>)}</tr>)}
           </tbody></table></div> : <Empty title="选择回测结果" text="最多选择 4 次已完成的回测进行比较。"/>}
         </section>}
 
