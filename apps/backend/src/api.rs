@@ -82,7 +82,7 @@ pub async fn get_metrics(
 /// 保留 /api/metrics 供现有 JSON 调试使用；Prometheus 使用独立的标准抓取端点。
 pub async fn prometheus_metrics(
     State(state): State<AppState>,
-) -> ([(axum::http::header::HeaderName, &'static str); 1], String) {
+) -> (axum::http::HeaderMap, String) {
     use std::fmt::Write;
 
     let pool_size = state.db.size() as usize;
