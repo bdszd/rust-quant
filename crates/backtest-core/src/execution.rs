@@ -18,15 +18,27 @@ pub type Trade = Fill;
 pub struct ExecutionModel {
     commission_rate: f64,
     slippage_rate: f64,
+    lot_size: u64,
+    stamp_duty_rate: f64,
+    min_commission: f64,
     next_order_id: u64,
     trades: Vec<Fill>,
 }
 
 impl ExecutionModel {
-    pub(crate) fn new(commission_rate: f64, slippage_rate: f64) -> Self {
+    pub(crate) fn new(
+        commission_rate: f64,
+        slippage_rate: f64,
+        lot_size: u64,
+        stamp_duty_rate: f64,
+        min_commission: f64,
+    ) -> Self {
         Self {
             commission_rate,
             slippage_rate,
+            lot_size,
+            stamp_duty_rate,
+            min_commission,
             next_order_id: 1,
             trades: Vec::new(),
         }
@@ -64,7 +76,19 @@ impl ExecutionModel {
         let quantity = match side {
             Side::Buy => {
                 let cost_per_share = fill_price * (1.0 + self.commission_rate);
-                (portfolio.cash() / cost_per_share).floor() as u64
+                let raw_quantity = (portfolio.cash() / cost_per_share).floor() as u64;
+                let mut quantity = raw_quantity / self.lot_size * self.lot_size;
+
+                // 最低佣金可能使按比例佣金估算出的买入数量略超出现金，按整手回退。
+                while quantity > 0 {
+                    let amount = quantity as f64 * fill_price;
+                    let fee = (amount * self.commission_rate).max(self.min_commission);
+                    if amount + fee <= portfolio.cash() {
+                        break;
+                    }
+                    quantity -= self.lot_size;
+                }
+                quantity
             }
             Side::Sell => portfolio.position(),
         };
@@ -77,7 +101,13 @@ impl ExecutionModel {
         order.validate()?;
 
         let amount = quantity as f64 * fill_price;
-        let fee = amount * self.commission_rate;
+        let commission = (amount * self.commission_rate).max(self.min_commission);
+        let stamp_duty = if side == Side::Sell {
+            amount * self.stamp_duty_rate
+        } else {
+            0.0
+        };
+        let fee = commission + stamp_duty;
         let fill = Fill {
             order_id: order.id,
             date: date.to_string(),
