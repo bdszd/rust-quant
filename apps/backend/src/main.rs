@@ -10,10 +10,7 @@ mod worker;
 
 use std::{env, path::PathBuf, sync::Arc};
 
-use axum::{
-    Router,
-    routing::get,
-};
+use axum::{Router, routing::get};
 use tokio::sync::watch;
 use tower_http::cors::CorsLayer;
 
