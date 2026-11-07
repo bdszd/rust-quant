@@ -85,6 +85,9 @@ pub fn execute_job(job: BacktestJob, metrics: Arc<Metrics>) -> Result<ApiBacktes
         initial_cash: job.initial_cash,
         commission_rate: job.commission_rate,
         slippage_rate: job.slippage_rate,
+        lot_size: job.lot_size,
+        stamp_duty_rate: job.stamp_duty_rate,
+        min_commission: job.min_commission,
         execution_mode: job.execution_mode,
     };
 
