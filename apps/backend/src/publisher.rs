@@ -113,13 +113,12 @@ pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::
 
                     if reconnect {
                         break;
-                        break;
                     }
                 }
             }
         }
 
-        metrics.set_rabbitmq_connected(false);
+        metrics.rabbitmq_connection_closed();
         drop(channel);
         drop(connection);
 
