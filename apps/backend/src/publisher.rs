@@ -52,7 +52,7 @@ pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::
             continue;
         }
 
-        metrics.set_rabbitmq_connected(true);
+        metrics.rabbitmq_connection_opened();
         println!("Outbox Publisher 已连接 RabbitMQ");
 
         let mut reconnect = false;
@@ -61,6 +61,7 @@ pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::
             tokio::select! {
                 _ = shutdown.changed() => {
                     println!("Outbox Publisher 收到关闭信号");
+                    metrics.rabbitmq_connection_closed();
                     return;
                 }
 
@@ -107,10 +108,11 @@ pub async fn publisher_loop(db: PgPool, amqp_addr: String, mut shutdown: watch::
                         } else {
                             println!("任务 {} 已发布到 RabbitMQ", message.task_id);
                         }
+                        metrics.record_duration("outbox_update", update_started.elapsed());
                     }
 
                     if reconnect {
-                        metrics.set_rabbitmq_connected(false);
+                        break;
                         break;
                     }
                 }
