@@ -2,7 +2,8 @@ use crate::tasks::{ApiBacktestResult, BacktestJob, convert_result};
 use backtest_core::{
     BacktestConfig, Bar, BuyAndHoldStrategy, SmaCrossStrategy, Strategy, load_bars, run,
 };
-use std::path::Path as FsPath;
+use std::{path::Path as FsPath, sync::Arc, time::Instant};
+use crate::metrics::Metrics;
 
 pub fn validate_dataset_name(dataset: &str) -> Result<(), String> {
     let mut parts = dataset.split('/');
@@ -59,13 +60,17 @@ pub fn validate_bars(bars: &[Bar]) -> Result<(), String> {
 }
 
 /// 执行实际回测。行情来自 data/cleaned/<symbol>/<date-range>/bars.csv。
-pub fn execute_job(job: BacktestJob) -> Result<ApiBacktestResult, String> {
+pub fn execute_job(job: BacktestJob, metrics: Arc<Metrics>) -> Result<ApiBacktestResult, String> {
     let path = job.data_dir.join(&job.dataset).join("bars.csv");
 
+    let load_started = Instant::now();
     let bars = load_bars(path.to_string_lossy().as_ref())
         .map_err(|e| format!("行情 CSV 读取失败：{e}"))?;
+    metrics.record_duration("data_load", load_started.elapsed());
 
+    let validate_started = Instant::now();
     validate_bars(&bars)?;
+    metrics.record_duration("data_validate", validate_started.elapsed());
 
     let mut strategy: Box<dyn Strategy> = match job.strategy.as_str() {
         "sma_cross" => Box::new(SmaCrossStrategy::new(
@@ -83,10 +88,12 @@ pub fn execute_job(job: BacktestJob) -> Result<ApiBacktestResult, String> {
         execution_mode: job.execution_mode,
     };
 
+    let engine_started = Instant::now();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         run(&bars, strategy.as_mut(), &config)
     }))
     .map_err(|_| "回测引擎执行失败，请检查数据与配置".to_string())?;
+    metrics.record_duration("engine_execute", engine_started.elapsed());
 
     Ok(convert_result(
         job.id,
