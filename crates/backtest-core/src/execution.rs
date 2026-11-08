@@ -119,10 +119,7 @@ impl ExecutionModel {
         };
         fill.validate()?;
 
-        match fill.side {
-            Side::Buy => portfolio.apply_buy(fill.quantity, fill.price, fill.fee),
-            Side::Sell => portfolio.apply_sell(fill.quantity, fill.price, fill.fee),
-        }
+        portfolio.apply_fill(&fill)?;
         self.trades.push(fill);
         Ok(())
     }
@@ -283,7 +280,7 @@ impl MultiAssetExecutionModel {
                 fee,
             };
             fill.validate()?;
-            portfolio.apply_sell(symbol, quantity, fill_price, fee)?;
+            portfolio.apply_fill(&fill)?;
             self.trades.push(fill);
             let _ = bar;
         }
@@ -348,7 +345,7 @@ impl MultiAssetExecutionModel {
                 fee,
             };
             fill.validate()?;
-            portfolio.apply_buy(symbol, quantity, fill_price, fee)?;
+            portfolio.apply_fill(&fill)?;
             self.trades.push(fill);
             let _ = bar;
         }
