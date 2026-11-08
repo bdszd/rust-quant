@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
-use trading_core::{Account, Fill, Position as AssetPosition};
+use trading_core::{Account, Fill};
+pub use trading_core::Position as AssetPosition;
 
 /// 账户在某个交易日收盘时的完整状态。
 #[derive(Debug, Clone)]
