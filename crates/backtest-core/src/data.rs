@@ -110,3 +110,79 @@ pub fn validate_bars(bars: &[Bar]) -> Result<(), DataValidationError> {
 
     Ok(())
 }
+
+
+/// 多标的行情集合。bars_by_date 以交易日为第一层索引，
+/// 同一天只包含实际提供行情的标的；缺失行情不会被伪造或前向填充。
+#[derive(Debug, Clone)]
+pub struct MultiAssetData {
+    calendar: Vec<String>,
+    bars_by_date: std::collections::BTreeMap<String, std::collections::BTreeMap<String, Bar>>,
+    symbols: Vec<String>,
+}
+
+impl MultiAssetData {
+    pub fn new(mut bars: Vec<Bar>) -> Result<Self, String> {
+        use std::collections::{BTreeMap, BTreeSet};
+
+        if bars.is_empty() {
+            return Err("多标的行情不能为空".into());
+        }
+
+        let mut by_symbol: BTreeMap<String, Vec<Bar>> = BTreeMap::new();
+        for bar in bars.drain(..) {
+            if bar.symbol.trim().is_empty() {
+                return Err(format!("交易日期 {} 的 symbol 不能为空", bar.date));
+            }
+            by_symbol.entry(bar.symbol.clone()).or_default().push(bar);
+        }
+
+        for (symbol, symbol_bars) in &by_symbol {
+            validate_bars(symbol_bars).map_err(|e| format!("{symbol}: {e}"))?;
+        }
+
+        let mut calendar = BTreeSet::new();
+        let mut bars_by_date: BTreeMap<String, BTreeMap<String, Bar>> = BTreeMap::new();
+        for (symbol, mut symbol_bars) in by_symbol {
+            symbol_bars.sort_by(|a, b| a.date.cmp(&b.date));
+            for bar in symbol_bars {
+                calendar.insert(bar.date.clone());
+                bars_by_date
+                    .entry(bar.date.clone())
+                    .or_default()
+                    .insert(symbol.clone(), bar);
+            }
+        }
+
+        Ok(Self {
+            calendar: calendar.into_iter().collect(),
+            bars_by_date,
+            symbols: bars_by_date
+                .values()
+                .flat_map(|day| day.keys().cloned())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
+        })
+    }
+
+    pub fn calendar(&self) -> &[String] {
+        &self.calendar
+    }
+
+    pub fn symbols(&self) -> &[String] {
+        &self.symbols
+    }
+
+    pub fn bars_on(&self, date: &str) -> Option<&std::collections::BTreeMap<String, Bar>> {
+        self.bars_by_date.get(date)
+    }
+
+    pub fn len(&self) -> usize {
+        self.calendar.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.calendar.is_empty()
+    }
+}
