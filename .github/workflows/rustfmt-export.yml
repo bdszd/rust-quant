@@ -1,0 +1,27 @@
+name: Rustfmt Export
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  rustfmt-export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format Rust sources
+        run: cargo fmt --all
+      - name: Package formatted backtest-core sources
+        run: |
+          mkdir -p /tmp/rustfmt-export
+          cp -R crates/backtest-core/src /tmp/rustfmt-export/src
+          cd /tmp/rustfmt-export
+          zip -r "$GITHUB_WORKSPACE/rustfmt-backtest-core.zip" src
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustfmt-backtest-core
+          path: rustfmt-backtest-core.zip
+          retention-days: 1
