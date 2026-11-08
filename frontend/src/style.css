@@ -214,3 +214,47 @@ td { font-size: 13px; padding: 14px 12px; }
   th { font-size: 10px; }
   td { font-size: 12px; }
 }
+
+
+/* Improve Latin/English text readability on desktop as well. */
+@media (min-width: 621px) {
+  .brand b { font-size: 15px; }
+  .brand small { font-size: 11px; }
+  .nav-caption, .eyebrow, .kicker { font-size: 11px; }
+  .nav-item { font-size: 14px; }
+  .sidebar-bottom b { font-size: 14px; }
+  .sidebar-bottom small { font-size: 12px; }
+
+  .topbar p { font-size: 14px; }
+  .button { font-size: 14px; }
+  .field > span { font-size: 14px; }
+  .field input, .field select { font-size: 14px; }
+  .field small, .dataset-hint { font-size: 12px; }
+  .segmented button { font-size: 14px; }
+  .strategy-description, .note-box { font-size: 13px; }
+  .task-state { font-size: 12px; }
+  .state-badge { font-size: 11px; }
+
+  .guidance-panel > p, .muted-copy { font-size: 14px; }
+  .flow { font-size: 13px; }
+  .welcome-panel p { font-size: 15px; }
+  .quick-stats span { font-size: 14px; }
+  .recent-row b { font-size: 14px; }
+  .recent-row small { font-size: 12px; }
+
+  .dataset-card b, .dataset-card > strong { font-size: 14px; }
+  .dataset-card div:nth-child(2) small,
+  .dataset-card > strong small { font-size: 12px; }
+
+  th { font-size: 12px; }
+  td { font-size: 14px; }
+  .text-button, .compare-picker label { font-size: 13px; }
+  .table-sub { font-size: 11px; }
+
+  .empty-state b { font-size: 15px; }
+  .empty-state p { font-size: 13px; }
+  .metric-top { font-size: 13px; }
+  .metric-card > small { font-size: 12px; }
+  .chart-labels, .chart-dates { font-size: 12px; }
+  footer { font-size: 10px; }
+}
