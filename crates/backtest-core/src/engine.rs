@@ -122,7 +122,6 @@ pub fn run<S: Strategy + ?Sized>(
     }
 }
 
-
 /// V2 多股票组合回测结果。
 #[derive(Debug, Clone)]
 pub struct PortfolioBacktestResult {
@@ -157,7 +156,9 @@ pub fn run_portfolio<S: crate::strategy::PortfolioStrategy>(
     let mut pending_targets = Vec::new();
 
     for date in data.calendar() {
-        let bars = data.bars_on(date).ok_or_else(|| format!("交易日历缺少行情映射：{date}"))?;
+        let bars = data
+            .bars_on(date)
+            .ok_or_else(|| format!("交易日历缺少行情映射：{date}"))?;
         portfolio.begin_day();
 
         execution.execute_targets(

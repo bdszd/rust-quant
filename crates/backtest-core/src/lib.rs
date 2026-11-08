@@ -11,8 +11,14 @@ pub mod strategy;
 pub use data::{Bar, MultiAssetData, load_bars, load_multi_asset_data};
 pub use engine::{BacktestConfig, BacktestResult, PortfolioBacktestResult, run, run_portfolio};
 pub use execution::{ExecutionMode, Trade};
-pub use portfolio::{AssetPosition, AssetPositionSnapshot, MultiAssetPortfolio, MultiAssetSnapshot, PortfolioSnapshot};
-pub use strategy::{BuyAndHoldStrategy, FixedWeightStrategy, PortfolioStrategy, Signal, SmaCrossStrategy, Strategy, TargetWeight};
+pub use portfolio::{
+    AssetPosition, AssetPositionSnapshot, MultiAssetPortfolio, MultiAssetSnapshot,
+    PortfolioSnapshot,
+};
+pub use strategy::{
+    BuyAndHoldStrategy, FixedWeightStrategy, PortfolioStrategy, Signal, SmaCrossStrategy, Strategy,
+    TargetWeight,
+};
 
 pub use trading_core::Side;
 
@@ -345,9 +351,17 @@ mod tests {
             make_symbol_bar("AAA", "2025-01-03", 11.0, 11.0),
             make_symbol_bar("BBB", "2025-01-02", 20.0, 20.0),
             make_symbol_bar("BBB", "2025-01-06", 21.0, 21.0),
-        ]).unwrap();
+        ])
+        .unwrap();
 
-        assert_eq!(data.calendar(), &vec!["2025-01-02".to_string(), "2025-01-03".to_string(), "2025-01-06".to_string()]);
+        assert_eq!(
+            data.calendar(),
+            &vec![
+                "2025-01-02".to_string(),
+                "2025-01-03".to_string(),
+                "2025-01-06".to_string()
+            ]
+        );
         assert_eq!(data.symbols(), &vec!["AAA".to_string(), "BBB".to_string()]);
         assert_eq!(data.bars_on("2025-01-03").unwrap().len(), 1);
         assert!(!data.bars_on("2025-01-03").unwrap().contains_key("BBB"));
@@ -362,10 +376,17 @@ mod tests {
             make_symbol_bar("BBB", "2025-01-03", 20.0, 20.0),
             make_symbol_bar("AAA", "2025-01-06", 12.0, 12.0),
             make_symbol_bar("BBB", "2025-01-06", 22.0, 22.0),
-        ]).unwrap();
+        ])
+        .unwrap();
         let mut strategy = FixedWeightStrategy::new(vec![
-            TargetWeight { symbol: "AAA".into(), weight: 0.4 },
-            TargetWeight { symbol: "BBB".into(), weight: 0.4 },
+            TargetWeight {
+                symbol: "AAA".into(),
+                weight: 0.4,
+            },
+            TargetWeight {
+                symbol: "BBB".into(),
+                weight: 0.4,
+            },
         ]);
         let config = BacktestConfig {
             initial_cash: 100_000.0,
@@ -413,7 +434,8 @@ mod tests {
             make_symbol_bar("AAA", "2025-01-03", 11.0, 11.0),
             make_symbol_bar("AAA", "2025-01-06", 12.0, 12.0),
             make_symbol_bar("BBB", "2025-01-03", 20.0, 20.0),
-        ]).unwrap();
+        ])
+        .unwrap();
         let mut strategy = BuyThenExit { day: 0 };
         let config = BacktestConfig {
             initial_cash: 100_000.0,
@@ -439,15 +461,17 @@ mod tests {
             make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
             make_symbol_bar("AAA", "2025-01-03", 10.0, 11.0),
             make_symbol_bar("AAA", "2025-01-06", 10.0, 12.0),
-        ]).unwrap();
+        ])
+        .unwrap();
         let benchmark = vec![
             make_symbol_bar("INDEX", "2025-01-02", 100.0, 100.0),
             make_symbol_bar("INDEX", "2025-01-03", 101.0, 101.0),
             make_symbol_bar("INDEX", "2025-01-06", 102.0, 102.0),
         ];
-        let mut strategy = FixedWeightStrategy::new(vec![
-            TargetWeight { symbol: "AAA".into(), weight: 0.5 },
-        ]);
+        let mut strategy = FixedWeightStrategy::new(vec![TargetWeight {
+            symbol: "AAA".into(),
+            weight: 0.5,
+        }]);
         let config = BacktestConfig {
             initial_cash: 100_000.0,
             commission_rate: 0.0,
@@ -463,5 +487,4 @@ mod tests {
         assert!(result.metrics.benchmark_return.is_some());
         assert!(result.metrics.excess_return.is_some());
     }
-
 }

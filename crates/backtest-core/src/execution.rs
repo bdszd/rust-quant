@@ -138,7 +138,6 @@ impl ExecutionModel {
     }
 }
 
-
 /// V2 多资产组合执行器。卖单先于买单处理，避免买单抢占尚未释放的卖出资金。
 pub struct MultiAssetExecutionModel {
     commission_rate: f64,
@@ -187,7 +186,10 @@ impl MultiAssetExecutionModel {
             {
                 return Err("目标权重或股票代码无效".into());
             }
-            if weights.insert(target.symbol.clone(), target.weight).is_some() {
+            if weights
+                .insert(target.symbol.clone(), target.weight)
+                .is_some()
+            {
                 return Err(format!("目标权重中存在重复股票：{}", target.symbol));
             }
             total_weight += target.weight;
@@ -214,7 +216,8 @@ impl MultiAssetExecutionModel {
         if !equity.is_finite() || equity <= 0.0 {
             return Err("组合权益无效，无法计算目标权重".into());
         }
-        let preserved_weight: f64 = portfolio.positions()
+        let preserved_weight: f64 = portfolio
+            .positions()
             .iter()
             .filter(|(symbol, _)| !weights.contains_key(*symbol))
             .map(|(_, position)| position.market_value() / equity)
@@ -224,40 +227,60 @@ impl MultiAssetExecutionModel {
         }
 
         // 未指定的现有持仓保持当前权重；显式设置为 0 才会退出持仓。
-        let symbols: BTreeSet<String> = portfolio.positions().keys()
+        let symbols: BTreeSet<String> = portfolio
+            .positions()
+            .keys()
             .cloned()
             .chain(weights.keys().cloned())
             .collect();
 
         // 第一阶段：卖出超出目标权重的部分。
         for symbol in &symbols {
-            let Some(bar) = bars.get(symbol) else { continue };
-            let Some(market_price) = execution_prices.get(symbol).copied() else { continue };
+            let Some(bar) = bars.get(symbol) else {
+                continue;
+            };
+            let Some(market_price) = execution_prices.get(symbol).copied() else {
+                continue;
+            };
             let target_weight = weights.get(symbol).copied().unwrap_or_else(|| {
-                portfolio.position(symbol)
+                portfolio
+                    .position(symbol)
                     .map(|p| p.market_value() / equity)
                     .unwrap_or(0.0)
             });
             let target_value = equity * target_weight;
-            let target_quantity = (target_value / market_price).floor() as u64 / self.lot_size * self.lot_size;
-            let Some(position) = portfolio.position(symbol) else { continue };
+            let target_quantity =
+                (target_value / market_price).floor() as u64 / self.lot_size * self.lot_size;
+            let Some(position) = portfolio.position(symbol) else {
+                continue;
+            };
             let current_quantity = position.quantity;
             let sellable = position.sellable_quantity;
             let quantity = if target_weight == 0.0 {
                 sellable
             } else {
-                current_quantity.saturating_sub(target_quantity).min(sellable)
-                    / self.lot_size * self.lot_size
+                current_quantity
+                    .saturating_sub(target_quantity)
+                    .min(sellable)
+                    / self.lot_size
+                    * self.lot_size
             };
-            if quantity == 0 { continue; }
+            if quantity == 0 {
+                continue;
+            }
             let fill_price = market_price * (1.0 - self.slippage_rate);
             let amount = quantity as f64 * fill_price;
             let commission = (amount * self.commission_rate).max(self.min_commission);
             let fee = commission + amount * self.stamp_duty_rate;
             let order_id = self.allocate_order_id();
             let fill = Fill {
-                order_id, date: date.to_string(), symbol: symbol.clone(),
-                side: Side::Sell, quantity, price: fill_price, fee,
+                order_id,
+                date: date.to_string(),
+                symbol: symbol.clone(),
+                side: Side::Sell,
+                quantity,
+                price: fill_price,
+                fee,
             };
             fill.validate()?;
             portfolio.apply_sell(symbol, quantity, fill_price, fee)?;
@@ -267,36 +290,62 @@ impl MultiAssetExecutionModel {
 
         // 第二阶段：用卖出后释放的现金执行买入；逐标的按字典序执行，结果可复现。
         for symbol in &symbols {
-            let Some(bar) = bars.get(symbol) else { continue };
-            let Some(market_price) = execution_prices.get(symbol).copied() else { continue };
+            let Some(bar) = bars.get(symbol) else {
+                continue;
+            };
+            let Some(market_price) = execution_prices.get(symbol).copied() else {
+                continue;
+            };
             let target_weight = weights.get(symbol).copied().unwrap_or_else(|| {
-                portfolio.position(symbol)
+                portfolio
+                    .position(symbol)
                     .map(|p| p.market_value() / equity)
                     .unwrap_or(0.0)
             });
-            if target_weight <= 0.0 { continue; }
+            if target_weight <= 0.0 {
+                continue;
+            }
             let target_value = equity * target_weight;
             let current_quantity = portfolio.position(symbol).map(|p| p.quantity).unwrap_or(0);
-            let target_quantity = (target_value / market_price).floor() as u64 / self.lot_size * self.lot_size;
+            let target_quantity =
+                (target_value / market_price).floor() as u64 / self.lot_size * self.lot_size;
             let desired_quantity = target_quantity.saturating_sub(current_quantity);
-            if desired_quantity == 0 { continue; }
+            if desired_quantity == 0 {
+                continue;
+            }
 
             let fill_price = market_price * (1.0 + self.slippage_rate);
             let cost_per_share = fill_price * (1.0 + self.commission_rate);
-            let affordable = (portfolio.cash() / cost_per_share).floor() as u64 / self.lot_size * self.lot_size;
+            let affordable =
+                (portfolio.cash() / cost_per_share).floor() as u64 / self.lot_size * self.lot_size;
             let mut quantity = desired_quantity.min(affordable);
             let mut amount = quantity as f64 * fill_price;
-            let mut fee = if quantity == 0 { 0.0 } else { (amount * self.commission_rate).max(self.min_commission) };
+            let mut fee = if quantity == 0 {
+                0.0
+            } else {
+                (amount * self.commission_rate).max(self.min_commission)
+            };
             while quantity > 0 && amount + fee > portfolio.cash() + f64::EPSILON {
                 quantity = quantity.saturating_sub(self.lot_size);
                 amount = quantity as f64 * fill_price;
-                fee = if quantity == 0 { 0.0 } else { (amount * self.commission_rate).max(self.min_commission) };
+                fee = if quantity == 0 {
+                    0.0
+                } else {
+                    (amount * self.commission_rate).max(self.min_commission)
+                };
             }
-            if quantity == 0 { continue; }
+            if quantity == 0 {
+                continue;
+            }
             let order_id = self.allocate_order_id();
             let fill = Fill {
-                order_id, date: date.to_string(), symbol: symbol.clone(),
-                side: Side::Buy, quantity, price: fill_price, fee,
+                order_id,
+                date: date.to_string(),
+                symbol: symbol.clone(),
+                side: Side::Buy,
+                quantity,
+                price: fill_price,
+                fee,
             };
             fill.validate()?;
             portfolio.apply_buy(symbol, quantity, fill_price, fee)?;

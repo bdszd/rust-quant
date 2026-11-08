@@ -116,7 +116,6 @@ impl Portfolio {
     }
 }
 
-
 /// 单只股票在组合账户中的持仓状态。
 #[derive(Debug, Clone)]
 pub struct AssetPosition {
@@ -207,7 +206,12 @@ impl MultiAssetPortfolio {
     }
 
     pub fn equity(&self) -> f64 {
-        self.cash + self.positions.values().map(AssetPosition::market_value).sum::<f64>()
+        self.cash
+            + self
+                .positions
+                .values()
+                .map(AssetPosition::market_value)
+                .sum::<f64>()
     }
 
     /// 每个新交易日开始时，将此前交易日买入的股票转为可卖数量。
@@ -241,7 +245,8 @@ impl MultiAssetPortfolio {
             return Err("组合可用现金不足".into());
         }
 
-        let position = self.positions
+        let position = self
+            .positions
             .entry(symbol.to_string())
             .or_insert_with(|| AssetPosition::new(symbol.to_string()));
         let old_cost = position.average_cost * position.quantity as f64;
@@ -260,7 +265,9 @@ impl MultiAssetPortfolio {
         price: f64,
         fee: f64,
     ) -> Result<(), String> {
-        let position = self.positions.get_mut(symbol)
+        let position = self
+            .positions
+            .get_mut(symbol)
             .ok_or_else(|| format!("{symbol} 没有可卖持仓"))?;
         if quantity == 0 || quantity > position.sellable_quantity || quantity > position.quantity {
             return Err(format!("{symbol} 可卖数量不足"));
@@ -288,19 +295,25 @@ impl MultiAssetPortfolio {
         closes: &std::collections::BTreeMap<String, f64>,
     ) -> MultiAssetSnapshot {
         self.update_prices(closes);
-        let positions: std::collections::BTreeMap<String, AssetPositionSnapshot> = self.positions
+        let positions: std::collections::BTreeMap<String, AssetPositionSnapshot> = self
+            .positions
             .iter()
             .filter(|(_, p)| p.quantity > 0)
-            .map(|(symbol, p)| (symbol.clone(), AssetPositionSnapshot {
-                symbol: symbol.clone(),
-                quantity: p.quantity,
-                sellable_quantity: p.sellable_quantity,
-                close: p.last_price,
-                market_value: p.market_value(),
-                average_cost: p.average_cost,
-                unrealized_pnl: p.unrealized_pnl(),
-                realized_pnl: p.realized_pnl,
-            }))
+            .map(|(symbol, p)| {
+                (
+                    symbol.clone(),
+                    AssetPositionSnapshot {
+                        symbol: symbol.clone(),
+                        quantity: p.quantity,
+                        sellable_quantity: p.sellable_quantity,
+                        close: p.last_price,
+                        market_value: p.market_value(),
+                        average_cost: p.average_cost,
+                        unrealized_pnl: p.unrealized_pnl(),
+                        realized_pnl: p.realized_pnl,
+                    },
+                )
+            })
             .collect();
         let market_value = positions.values().map(|p| p.market_value).sum::<f64>();
         let equity = self.cash + market_value;
