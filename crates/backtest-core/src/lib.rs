@@ -1,4 +1,6 @@
 pub mod analytics;
+
+pub use analytics::{BenchmarkSnapshot, PortfolioPerformanceMetrics};
 pub mod data;
 pub mod engine;
 pub mod execution;
@@ -6,11 +8,17 @@ pub mod indicators;
 pub mod portfolio;
 pub mod strategy;
 
-pub use data::{Bar, load_bars};
-pub use engine::{BacktestConfig, BacktestResult, run};
+pub use data::{Bar, MultiAssetData, load_data, load_multi_asset_data};
+pub use engine::{BacktestConfig, BacktestResult, PortfolioBacktestResult, run, run_portfolio};
 pub use execution::{ExecutionMode, Trade};
-pub use portfolio::PortfolioSnapshot;
-pub use strategy::{BuyAndHoldStrategy, Signal, SmaCrossStrategy, Strategy};
+pub use portfolio::{
+    AssetPosition, AssetPositionSnapshot, MultiAssetPortfolio, MultiAssetSnapshot,
+    PortfolioSnapshot,
+};
+pub use strategy::{
+    BuyAndHoldStrategy, FixedWeightStrategy, PortfolioStrategy, Signal, SmaCrossStrategy, Strategy,
+    TargetWeight,
+};
 
 pub use trading_core::Side;
 
@@ -159,6 +167,8 @@ mod tests {
         assert!((buy.price - 101.0).abs() < 1e-9);
         assert_eq!(buy.quantity, 9);
 
+        portfolio.begin_day();
+
         execution
             .execute(&mut portfolio, Signal::Sell, "TEST", "2025-01-02", 100.0)
             .unwrap();
@@ -225,6 +235,8 @@ mod tests {
         assert_eq!(buy.quantity, 900);
         assert!((buy.fee - 5.0).abs() < 1e-9);
         assert!((portfolio.cash() - 995.0).abs() < 1e-9);
+
+        portfolio.begin_day();
 
         execution
             .execute(
@@ -321,5 +333,214 @@ mod tests {
         };
 
         assert!(std::panic::catch_unwind(|| config.validate()).is_err());
+    }
+
+    fn make_symbol_bar(symbol: &str, date: &str, open: f64, close: f64) -> Bar {
+        Bar {
+            symbol: symbol.to_string(),
+            date: date.to_string(),
+            open,
+            high: open.max(close) + 0.5,
+            low: open.min(close) - 0.5,
+            close,
+            volume: 10_000.0,
+            amount: None,
+        }
+    }
+
+    fn load_test_multi_asset_data(
+        bars: Vec<Bar>,
+    ) -> Result<MultiAssetData, Box<dyn std::error::Error>> {
+        use std::{
+            collections::BTreeMap,
+            fs,
+            sync::atomic::{AtomicUsize, Ordering},
+        };
+
+        static NEXT_FILE_ID: AtomicUsize = AtomicUsize::new(0);
+
+        let mut bars_by_symbol: BTreeMap<String, Vec<Bar>> = BTreeMap::new();
+        for bar in bars {
+            bars_by_symbol
+                .entry(bar.symbol.clone())
+                .or_default()
+                .push(bar);
+        }
+
+        let mut paths = Vec::with_capacity(bars_by_symbol.len());
+        for (symbol, symbol_bars) in bars_by_symbol {
+            let id = NEXT_FILE_ID.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "rust_quant_test_{}_{}_{}.csv",
+                std::process::id(),
+                id,
+                symbol
+            ));
+
+            let mut writer = csv::Writer::from_path(&path)?;
+            for bar in symbol_bars {
+                writer.serialize(bar)?;
+            }
+            writer.flush()?;
+            paths.push(path);
+        }
+
+        let path_strings = paths
+            .iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        let result = load_multi_asset_data(&path_strings);
+
+        for path in paths {
+            let _ = fs::remove_file(path);
+        }
+
+        result
+    }
+
+    #[test]
+    fn multi_asset_data_builds_union_calendar_without_filling_missing_bars() {
+        let data = load_test_multi_asset_data(vec![
+            make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
+            make_symbol_bar("AAA", "2025-01-03", 11.0, 11.0),
+            make_symbol_bar("BBB", "2025-01-02", 20.0, 20.0),
+            make_symbol_bar("BBB", "2025-01-06", 21.0, 21.0),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            data.calendar(),
+            &vec![
+                "2025-01-02".to_string(),
+                "2025-01-03".to_string(),
+                "2025-01-06".to_string()
+            ]
+        );
+        assert_eq!(data.symbols(), &vec!["AAA".to_string(), "BBB".to_string()]);
+        assert_eq!(data.bars_on("2025-01-03").unwrap().len(), 1);
+        assert!(!data.bars_on("2025-01-03").unwrap().contains_key("BBB"));
+    }
+
+    #[test]
+    fn portfolio_backtest_tracks_multiple_positions_and_cash() {
+        let data = load_test_multi_asset_data(vec![
+            make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
+            make_symbol_bar("BBB", "2025-01-02", 20.0, 20.0),
+            make_symbol_bar("AAA", "2025-01-03", 11.0, 11.0),
+            make_symbol_bar("BBB", "2025-01-03", 20.0, 20.0),
+            make_symbol_bar("AAA", "2025-01-06", 12.0, 12.0),
+            make_symbol_bar("BBB", "2025-01-06", 22.0, 22.0),
+        ])
+        .unwrap();
+        let mut strategy = FixedWeightStrategy::new(vec![
+            TargetWeight {
+                symbol: "AAA".into(),
+                weight: 0.4,
+            },
+            TargetWeight {
+                symbol: "BBB".into(),
+                weight: 0.4,
+            },
+        ]);
+        let config = BacktestConfig {
+            initial_cash: 100_000.0,
+            commission_rate: 0.0,
+            slippage_rate: 0.0,
+            lot_size: 100,
+            stamp_duty_rate: 0.0,
+            min_commission: 0.0,
+            execution_mode: ExecutionMode::NextOpen,
+        };
+
+        let result = run_portfolio(&data, &mut strategy, &config, None).unwrap();
+        assert_eq!(result.trades.len(), 4);
+        assert_eq!(result.trades[0].symbol, "AAA");
+        assert_eq!(result.trades[1].symbol, "BBB");
+        assert_eq!(result.trades[2].side, Side::Sell);
+        assert_eq!(result.trades[3].side, Side::Sell);
+        assert!(result.history[1].positions.contains_key("AAA"));
+        assert!(result.history[1].positions.contains_key("BBB"));
+        assert!(result.history[1].cash > 0.0);
+        assert!(result.metrics.final_equity > config.initial_cash);
+    }
+
+    struct BuyThenExit {
+        day: usize,
+    }
+
+    impl PortfolioStrategy for BuyThenExit {
+        fn on_day(
+            &mut self,
+            _date: &str,
+            _bars: &std::collections::BTreeMap<String, Bar>,
+            _portfolio: &MultiAssetSnapshot,
+        ) -> Vec<TargetWeight> {
+            self.day += 1;
+            vec![TargetWeight {
+                symbol: "AAA".into(),
+                weight: if self.day == 1 { 0.5 } else { 0.0 },
+            }]
+        }
+    }
+
+    #[test]
+    fn portfolio_respects_t_plus_one_and_waits_for_symbol_bar() {
+        let data = load_test_multi_asset_data(vec![
+            make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
+            make_symbol_bar("AAA", "2025-01-03", 11.0, 11.0),
+            make_symbol_bar("AAA", "2025-01-06", 12.0, 12.0),
+            make_symbol_bar("BBB", "2025-01-03", 20.0, 20.0),
+        ])
+        .unwrap();
+        let mut strategy = BuyThenExit { day: 0 };
+        let config = BacktestConfig {
+            initial_cash: 100_000.0,
+            commission_rate: 0.0,
+            slippage_rate: 0.0,
+            lot_size: 100,
+            stamp_duty_rate: 0.0,
+            min_commission: 0.0,
+            execution_mode: ExecutionMode::NextOpen,
+        };
+
+        let result = run_portfolio(&data, &mut strategy, &config, None).unwrap();
+        assert_eq!(result.trades.len(), 2);
+        assert_eq!(result.trades[0].date, "2025-01-03");
+        assert_eq!(result.trades[0].side, Side::Buy);
+        assert_eq!(result.trades[1].date, "2025-01-06");
+        assert_eq!(result.trades[1].side, Side::Sell);
+    }
+
+    #[test]
+    fn portfolio_benchmark_comparison_produces_aligned_history() {
+        let data = load_test_multi_asset_data(vec![
+            make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
+            make_symbol_bar("AAA", "2025-01-03", 10.0, 11.0),
+            make_symbol_bar("AAA", "2025-01-06", 10.0, 12.0),
+        ])
+        .unwrap();
+        let benchmark = vec![
+            make_symbol_bar("INDEX", "2025-01-02", 100.0, 100.0),
+            make_symbol_bar("INDEX", "2025-01-03", 101.0, 101.0),
+            make_symbol_bar("INDEX", "2025-01-06", 102.0, 102.0),
+        ];
+        let mut strategy = FixedWeightStrategy::new(vec![TargetWeight {
+            symbol: "AAA".into(),
+            weight: 0.5,
+        }]);
+        let config = BacktestConfig {
+            initial_cash: 100_000.0,
+            commission_rate: 0.0,
+            slippage_rate: 0.0,
+            lot_size: 100,
+            stamp_duty_rate: 0.0,
+            min_commission: 0.0,
+            execution_mode: ExecutionMode::NextOpen,
+        };
+
+        let result = run_portfolio(&data, &mut strategy, &config, Some(&benchmark)).unwrap();
+        assert_eq!(result.benchmark_history.len(), data.len());
+        assert!(result.metrics.benchmark_return.is_some());
+        assert!(result.metrics.excess_return.is_some());
     }
 }

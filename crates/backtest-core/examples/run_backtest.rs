@@ -1,4 +1,4 @@
-use backtest_core::{BacktestConfig, ExecutionMode, SmaCrossStrategy, load_bars, run};
+use backtest_core::{BacktestConfig, ExecutionMode, SmaCrossStrategy, load_data, run};
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .nth(1)
         .unwrap_or_else(|| "data/AAPL.csv".to_string());
 
-    let bars = load_bars(&path)?;
+    let bars = load_data(&path)?;
 
     if bars.is_empty() {
         println!("行情文件为空，没有可回测的数据。");

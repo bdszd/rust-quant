@@ -1,7 +1,7 @@
 use crate::metrics::Metrics;
 use crate::tasks::{ApiBacktestResult, BacktestJob, convert_result};
 use backtest_core::{
-    BacktestConfig, Bar, BuyAndHoldStrategy, SmaCrossStrategy, Strategy, load_bars, run,
+    BacktestConfig, Bar, BuyAndHoldStrategy, SmaCrossStrategy, Strategy, load_data, run,
 };
 use std::{path::Path as FsPath, sync::Arc, time::Instant};
 
@@ -64,7 +64,7 @@ pub fn execute_job(job: BacktestJob, metrics: Arc<Metrics>) -> Result<ApiBacktes
     let path = job.data_dir.join(&job.dataset).join("bars.csv");
 
     let load_started = Instant::now();
-    let bars = load_bars(path.to_string_lossy().as_ref())
+    let bars = load_data(path.to_string_lossy().as_ref())
         .map_err(|e| format!("行情 CSV 读取失败：{e}"))?;
     metrics.record_duration("data_load", load_started.elapsed());
 
