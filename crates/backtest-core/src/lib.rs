@@ -1,4 +1,6 @@
 pub mod analytics;
+
+pub use analytics::{BenchmarkSnapshot, PortfolioPerformanceMetrics};
 pub mod data;
 pub mod engine;
 pub mod execution;
@@ -345,8 +347,8 @@ mod tests {
             make_symbol_bar("BBB", "2025-01-06", 21.0, 21.0),
         ]).unwrap();
 
-        assert_eq!(data.calendar(), &["2025-01-02", "2025-01-03", "2025-01-06"]);
-        assert_eq!(data.symbols(), &["AAA", "BBB"]);
+        assert_eq!(data.calendar(), &vec!["2025-01-02".to_string(), "2025-01-03".to_string(), "2025-01-06".to_string()]);
+        assert_eq!(data.symbols(), &vec!["AAA".to_string(), "BBB".to_string()]);
         assert_eq!(data.bars_on("2025-01-03").unwrap().len(), 1);
         assert!(!data.bars_on("2025-01-03").unwrap().contains_key("BBB"));
     }
