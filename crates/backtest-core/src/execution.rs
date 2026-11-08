@@ -203,7 +203,8 @@ impl MultiAssetExecutionModel {
         let mut execution_prices = BTreeMap::new();
         for (symbol, bar) in bars {
             let price = price_of(bar);
-            if !price.is_finite() || price <= 0.0 {
+            // 无成交量的交易日不撮合订单；仍可在收盘时使用行情价格估值。
+            if !price.is_finite() || price <= 0.0 || bar.volume <= 0.0 {
                 continue;
             }
             execution_prices.insert(symbol.clone(), price);
