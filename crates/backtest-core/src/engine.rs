@@ -82,6 +82,8 @@ pub fn run<S: Strategy + ?Sized>(
     let mut pending_signal = Signal::Hold;
 
     for bar in bars {
+        // 新交易日开始：释放上一交易日买入的可卖数量。
+        portfolio.begin_day();
         // 只执行上一根 Bar 产生的信号；A 股当日买入后，最早只能在下一交易日卖出。
         let execution_price = match config.execution_mode {
             ExecutionMode::NextOpen => bar.open,
