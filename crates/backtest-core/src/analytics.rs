@@ -168,7 +168,7 @@ pub fn calculate_portfolio_metrics(
     trades: &[Trade],
     benchmark_bars: Option<&[crate::data::Bar]>,
 ) -> (PortfolioPerformanceMetrics, Vec<BenchmarkSnapshot>) {
-    use std::collections::{BTreeMap, VecDeque};
+    use std::collections::BTreeMap;
 
     let final_equity = history.last().map(|s| s.equity).unwrap_or(initial_cash);
     let total_return = if initial_cash > 0.0 { final_equity / initial_cash - 1.0 } else { 0.0 };
@@ -208,32 +208,24 @@ pub fn calculate_portfolio_metrics(
     } else { 0.0 };
 
     // 按 symbol 独立进行 FIFO 成本配对，绝不跨股票匹配买卖成交。
-    let mut open_lots: BTreeMap<String, VecDeque<(u64, f64)>> = BTreeMap::new();
+    let mut open_positions: BTreeMap<String, (u64, f64)> = BTreeMap::new();
     let mut closed_pnls = Vec::new();
     for trade in trades {
-        let lots = open_lots.entry(trade.symbol.clone()).or_default();
+        let entry = open_positions.entry(trade.symbol.clone()).or_insert((0, 0.0));
         match trade.side {
-            Side::Buy => lots.push_back((
-                trade.quantity,
-                trade.price * trade.quantity as f64 + trade.fee,
-            )),
+            Side::Buy => {
+                entry.0 += trade.quantity;
+                entry.1 += trade.price * trade.quantity as f64 + trade.fee;
+            }
             Side::Sell => {
-                let mut remaining = trade.quantity;
-                let mut matched_cost = 0.0;
-                while remaining > 0 {
-                    let Some((qty, total_cost)) = lots.pop_front() else { break };
-                    let matched = qty.min(remaining);
-                    matched_cost += total_cost * matched as f64 / qty as f64;
-                    if qty > matched {
-                        lots.push_front((
-                            qty - matched,
-                            total_cost * (qty - matched) as f64 / qty as f64,
-                        ));
-                    }
-                    remaining -= matched;
-                }
-                if remaining == 0 {
-                    closed_pnls.push(trade.price * trade.quantity as f64 - trade.fee - matched_cost);
+                let matched = trade.quantity.min(entry.0);
+                if matched == 0 { continue; }
+                let average_cost = entry.1 / entry.0 as f64;
+                let matched_cost = average_cost * matched as f64;
+                entry.0 -= matched;
+                entry.1 -= matched_cost;
+                if matched == trade.quantity {
+                    closed_pnls.push(trade.price * matched as f64 - trade.fee - matched_cost);
                 }
             }
         }
@@ -259,7 +251,8 @@ pub fn calculate_portfolio_metrics(
         for bar in bars {
             by_date.insert(bar.date.clone(), bar.close);
         }
-        let first_close = *by_date.values().next()?;
+        let first_date = &history.first()?.date;
+        let first_close = *by_date.range(..=first_date.clone()).next_back()?.1;
         let units = initial_cash / first_close;
         let mut last_close = first_close;
         let mut previous_equity = initial_cash;
