@@ -83,7 +83,6 @@ pub fn load_data(path: &str) -> Result<Vec<Bar>, DataLoadError> {
         bars.push(bar);
     }
 
-    bars.sort_by(|a, b| a.date.cmp(&b.date));
     Ok(bars)
 }
 
@@ -187,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn loads_single_file_and_sorts_bars_by_date() -> Result<(), Box<dyn Error>> {
+    fn loads_single_file_without_reordering_bars() -> Result<(), Box<dyn Error>> {
         let path = write_test_csv(concat!(
             "symbol,date,open,high,low,close,volume\n",
             "AAA,2025-01-03,11,12,10,11,1200\n",
@@ -199,8 +198,8 @@ mod tests {
 
         let bars = result?;
         assert_eq!(bars.len(), 2);
-        assert_eq!(bars[0].date, "2025-01-02");
-        assert_eq!(bars[1].date, "2025-01-03");
+        assert_eq!(bars[0].date, "2025-01-03");
+        assert_eq!(bars[1].date, "2025-01-02");
         Ok(())
     }
 
