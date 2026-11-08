@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, error::Error, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Bar {
@@ -17,105 +21,80 @@ pub struct Bar {
     pub amount: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct DataValidationError {
-    pub row: usize,
-    pub message: String,
+/// 数据加载阶段的错误。
+///
+/// 这里只描述文件读取、CSV 反序列化和多标的合并冲突，
+/// 不负责判断行情数据是否符合金融业务规则。
+#[derive(Debug)]
+pub enum DataLoadError {
+    Csv {
+        path: String,
+        source: csv::Error,
+    },
+    DuplicateBar {
+        path: String,
+        symbol: String,
+        date: String,
+    },
 }
 
-impl fmt::Display for DataValidationError {
+impl fmt::Display for DataLoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "第 {} 行：{}", self.row, self.message)
+        match self {
+            Self::Csv { path, source } => {
+                write!(f, "加载行情文件失败（{path}）：{source}")
+            }
+            Self::DuplicateBar { path, symbol, date } => {
+                write!(
+                    f,
+                    "合并行情文件失败（{path}）：标的 {symbol} 在 {date} 存在重复 Bar"
+                )
+            }
+        }
     }
 }
 
-impl Error for DataValidationError {}
+impl Error for DataLoadError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Csv { source, .. } => Some(source),
+            Self::DuplicateBar { .. } => None,
+        }
+    }
+}
 
-/// 读取 CSV 行情。兼容标准字段以及 Tushare 的 ts_code/trade_date/vol。
-/// 读取后按日期升序排列，并拒绝重复日期、非法 OHLC 和无效成交量。
-pub fn load_data(path: &str) -> Result<Vec<Bar>, Box<dyn Error>> {
-    let mut reader = csv::Reader::from_path(path)?;
+/// 加载单个 CSV 数据文件。
+///
+/// 只负责 CSV 读取、Bar 反序列化和按日期排序；
+/// 数据格式转换、数据清洗和行情有效性校验由上游数据模块负责。
+pub fn load_data(path: &str) -> Result<Vec<Bar>, DataLoadError> {
+    let mut reader = csv::Reader::from_path(path).map_err(|source| DataLoadError::Csv {
+        path: path.to_string(),
+        source,
+    })?;
+
     let mut bars = Vec::new();
 
     for row in reader.deserialize() {
-        let bar: Bar = row?;
+        let bar: Bar = row.map_err(|source| DataLoadError::Csv {
+            path: path.to_string(),
+            source,
+        })?;
         bars.push(bar);
     }
 
-    validate_bars(&bars)?;
     bars.sort_by(|a, b| a.date.cmp(&b.date));
     Ok(bars)
 }
 
-pub fn validate_bars(bars: &[Bar]) -> Result<(), DataValidationError> {
-    let mut dates = HashSet::with_capacity(bars.len());
-    let mut symbol: Option<&str> = None;
-
-    for (index, bar) in bars.iter().enumerate() {
-        let row = index + 2;
-        if bar.date.trim().is_empty() {
-            return Err(DataValidationError {
-                row,
-                message: "交易日期不能为空".into(),
-            });
-        }
-        if !dates.insert(bar.date.as_str()) {
-            return Err(DataValidationError {
-                row,
-                message: format!("重复交易日期：{}", bar.date),
-            });
-        }
-        if let Some(expected) = symbol {
-            if !bar.symbol.is_empty() && !expected.is_empty() && bar.symbol != expected {
-                return Err(DataValidationError {
-                    row,
-                    message: "单次回测数据集只能包含一个股票代码".into(),
-                });
-            }
-        } else {
-            symbol = Some(&bar.symbol);
-        }
-        let prices = [bar.open, bar.high, bar.low, bar.close];
-        if prices.iter().any(|v| !v.is_finite() || *v <= 0.0) {
-            return Err(DataValidationError {
-                row,
-                message: "OHLC 必须是有限的正数".into(),
-            });
-        }
-        if bar.low > bar.open.min(bar.close)
-            || bar.high < bar.open.max(bar.close)
-            || bar.low > bar.high
-        {
-            return Err(DataValidationError {
-                row,
-                message: "OHLC 价格关系不合法".into(),
-            });
-        }
-        if !bar.volume.is_finite() || bar.volume < 0.0 {
-            return Err(DataValidationError {
-                row,
-                message: "成交量必须是有限的非负数".into(),
-            });
-        }
-        if let Some(amount) = bar.amount
-            && (!amount.is_finite() || amount < 0.0)
-        {
-            return Err(DataValidationError {
-                row,
-                message: "成交额必须是有限的非负数".into(),
-            });
-        }
-    }
-
-    Ok(())
-}
-
-/// 多标的行情集合。bars_by_date 以交易日为第一层索引，
-/// 同一天只包含实际提供行情的标的；缺失行情不会被伪造或前向填充。
+/// 多标的行情集合。
+///
+/// calendar 是所有 Bar 日期的并集；
+/// bars_by_date 只保存实际加载到的行情，不补造缺失 Bar。
 #[derive(Debug, Clone)]
 pub struct MultiAssetData {
     calendar: Vec<String>,
-    bars_by_date: std::collections::BTreeMap<String, std::collections::BTreeMap<String, Bar>>,
+    bars_by_date: BTreeMap<String, BTreeMap<String, Bar>>,
     symbols: Vec<String>,
 }
 
@@ -128,7 +107,7 @@ impl MultiAssetData {
         &self.symbols
     }
 
-    pub fn bars_on(&self, date: &str) -> Option<&std::collections::BTreeMap<String, Bar>> {
+    pub fn bars_on(&self, date: &str) -> Option<&BTreeMap<String, Bar>> {
         self.bars_by_date.get(date)
     }
 
@@ -141,64 +120,35 @@ impl MultiAssetData {
     }
 }
 
-/// 从多个单标的 CSV 文件加载组合行情。每个文件必须只包含一个股票代码。
-/// 各文件的交易日可以不同，最终交易日历取所有文件日期的并集。
-pub fn load_multi_asset_data(paths: &[String]) -> Result<MultiAssetData, Box<dyn Error>> {
-    use std::collections::{BTreeMap, BTreeSet};
-
-    if paths.is_empty() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "多标的行情文件路径不能为空",
-        )
-        .into());
-    }
-
+/// 加载并整合多个行情文件。
+///
+/// 交易日历取所有 Bar 日期的并集，标的集合取所有 Bar 的 symbol。
+/// 同一标的同一日期只能保存一条 Bar；发生键冲突时返回错误，避免静默覆盖。
+/// 空路径列表或空文件会得到空数据，不视为加载错误。
+pub fn load_multi_asset_data(paths: &[String]) -> Result<MultiAssetData, DataLoadError> {
     let mut calendar = BTreeSet::new();
     let mut symbols = BTreeSet::new();
     let mut bars_by_date: BTreeMap<String, BTreeMap<String, Bar>> = BTreeMap::new();
 
     for path in paths {
         let bars = load_data(path)?;
-        let Some(first_bar) = bars.first() else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("行情文件为空：{path}"),
-            )
-            .into());
-        };
-
-        let symbol = first_bar.symbol.trim().to_string();
-        if symbol.is_empty() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("行情文件缺少股票代码：{path}"),
-            )
-            .into());
-        }
-
-        if !symbols.insert(symbol.to_string()) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("多个行情文件包含重复股票代码：{symbol}"),
-            )
-            .into());
-        }
 
         for bar in bars {
-            if bar.symbol.trim().is_empty() || bar.symbol != symbol {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("行情文件 {path} 必须只包含股票代码 {symbol}"),
-                )
-                .into());
+            let date = bar.date.clone();
+            let symbol = bar.symbol.clone();
+
+            let bars_on_date = bars_by_date.entry(date.clone()).or_default();
+            if bars_on_date.contains_key(&symbol) {
+                return Err(DataLoadError::DuplicateBar {
+                    path: path.clone(),
+                    symbol,
+                    date,
+                });
             }
 
-            calendar.insert(bar.date.clone());
-            bars_by_date
-                .entry(bar.date.clone())
-                .or_default()
-                .insert(symbol.to_string(), bar);
+            calendar.insert(date);
+            symbols.insert(symbol.clone());
+            bars_on_date.insert(symbol, bar);
         }
     }
 
@@ -211,7 +161,7 @@ pub fn load_multi_asset_data(paths: &[String]) -> Result<MultiAssetData, Box<dyn
 
 #[cfg(test)]
 mod tests {
-    use super::load_multi_asset_data;
+    use super::{DataLoadError, load_data, load_multi_asset_data};
     use std::{
         error::Error,
         fs,
@@ -224,7 +174,7 @@ mod tests {
     fn write_test_csv(contents: &str) -> Result<PathBuf, Box<dyn Error>> {
         let id = NEXT_FILE_ID.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "rust_quant_multi_asset_{}_{}.csv",
+            "rust_quant_data_loading_{}_{}.csv",
             std::process::id(),
             id
         ));
@@ -232,24 +182,77 @@ mod tests {
         Ok(path)
     }
 
+    fn path_string(path: &PathBuf) -> String {
+        path.to_string_lossy().into_owned()
+    }
+
     #[test]
-    fn loads_multiple_single_symbol_files_and_builds_union_calendar() -> Result<(), Box<dyn Error>>
-    {
+    fn loads_single_file_and_sorts_bars_by_date() -> Result<(), Box<dyn Error>> {
+        let path = write_test_csv(concat!(
+            "symbol,date,open,high,low,close,volume\n",
+            "AAA,2025-01-03,11,12,10,11,1200\n",
+            "AAA,2025-01-02,10,11,9,10,1000\n",
+        ))?;
+
+        let result = load_data(&path_string(&path));
+        let _ = fs::remove_file(&path);
+
+        let bars = result?;
+        assert_eq!(bars.len(), 2);
+        assert_eq!(bars[0].date, "2025-01-02");
+        assert_eq!(bars[1].date, "2025-01-03");
+        Ok(())
+    }
+
+    #[test]
+    fn loads_empty_file_as_empty_bars() -> Result<(), Box<dyn Error>> {
+        let path = write_test_csv("symbol,date,open,high,low,close,volume\n")?;
+
+        let result = load_data(&path_string(&path));
+        let _ = fs::remove_file(&path);
+
+        assert!(result?.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn returns_error_when_file_does_not_exist() {
+        let path = std::env::temp_dir()
+            .join(format!("rust_quant_missing_{}.csv", std::process::id()));
+
+        let result = load_data(&path.to_string_lossy());
+        assert!(matches!(result, Err(DataLoadError::Csv { .. })));
+    }
+
+    #[test]
+    fn returns_error_when_csv_cannot_be_deserialized() -> Result<(), Box<dyn Error>> {
+        let path = write_test_csv(concat!(
+            "symbol,date,open,high,low,close,volume\n",
+            "AAA,2025-01-02,not-a-number,11,9,10,1000\n",
+        ))?;
+
+        let result = load_data(&path_string(&path));
+        let _ = fs::remove_file(&path);
+
+        assert!(matches!(result, Err(DataLoadError::Csv { .. })));
+        Ok(())
+    }
+
+    #[test]
+    fn combines_files_into_union_calendar_without_filling_missing_bars()
+    -> Result<(), Box<dyn Error>> {
         let aaa = write_test_csv(concat!(
             "symbol,date,open,high,low,close,volume\n",
-            "AAA,2025-01-02,10,10.5,9.5,10,1000\n",
-            "AAA,2025-01-03,11,11.5,10.5,11,1200\n",
+            "AAA,2025-01-02,10,11,9,10,1000\n",
+            "AAA,2025-01-03,11,12,10,11,1200\n",
         ))?;
         let bbb = write_test_csv(concat!(
             "symbol,date,open,high,low,close,volume\n",
-            "BBB,2025-01-02,20,20.5,19.5,20,2000\n",
-            "BBB,2025-01-06,21,21.5,20.5,21,2200\n",
+            "BBB,2025-01-02,20,21,19,20,2000\n",
+            "BBB,2025-01-06,21,22,20,21,2200\n",
         ))?;
 
-        let paths = vec![
-            aaa.to_string_lossy().into_owned(),
-            bbb.to_string_lossy().into_owned(),
-        ];
+        let paths = vec![path_string(&aaa), path_string(&bbb)];
         let result = load_multi_asset_data(&paths);
 
         let _ = fs::remove_file(&aaa);
@@ -265,8 +268,48 @@ mod tests {
             ]
         );
         assert_eq!(data.symbols(), &vec!["AAA".to_string(), "BBB".to_string()]);
+        assert_eq!(data.len(), 3);
+        assert_eq!(data.bars_on("2025-01-02").unwrap().len(), 2);
         assert_eq!(data.bars_on("2025-01-03").unwrap().len(), 1);
         assert!(!data.bars_on("2025-01-03").unwrap().contains_key("BBB"));
+        Ok(())
+    }
+
+    #[test]
+    fn empty_files_and_empty_path_list_produce_empty_dataset()
+    -> Result<(), Box<dyn Error>> {
+        let path = write_test_csv("symbol,date,open,high,low,close,volume\n")?;
+
+        let data = load_multi_asset_data(&[path_string(&path)])?;
+        let empty = load_multi_asset_data(&[])?;
+
+        let _ = fs::remove_file(&path);
+
+        assert!(data.is_empty());
+        assert!(data.symbols().is_empty());
+        assert!(empty.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_symbol_and_date_returns_merge_conflict()
+    -> Result<(), Box<dyn Error>> {
+        let first = write_test_csv(concat!(
+            "symbol,date,open,high,low,close,volume\n",
+            "AAA,2025-01-02,10,11,9,10,1000\n",
+        ))?;
+        let second = write_test_csv(concat!(
+            "symbol,date,open,high,low,close,volume\n",
+            "AAA,2025-01-02,12,13,11,12,1500\n",
+        ))?;
+
+        let paths = vec![path_string(&first), path_string(&second)];
+        let result = load_multi_asset_data(&paths);
+
+        let _ = fs::remove_file(&first);
+        let _ = fs::remove_file(&second);
+
+        assert!(matches!(result, Err(DataLoadError::DuplicateBar { .. })));
         Ok(())
     }
 }
