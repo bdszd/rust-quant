@@ -224,7 +224,11 @@ impl MultiAssetExecutionModel {
         for symbol in &symbols {
             let Some(bar) = bars.get(symbol) else { continue };
             let Some(market_price) = execution_prices.get(symbol).copied() else { continue };
-            let target_weight = weights.get(symbol).copied().unwrap_or(0.0);
+            let target_weight = weights.get(symbol).copied().unwrap_or_else(|| {
+                portfolio.position(symbol)
+                    .map(|p| p.market_value() / equity)
+                    .unwrap_or(0.0)
+            });
             let target_value = equity * target_weight;
             let target_quantity = (target_value / market_price).floor() as u64 / self.lot_size * self.lot_size;
             let Some(position) = portfolio.position(symbol) else { continue };
@@ -256,7 +260,11 @@ impl MultiAssetExecutionModel {
         for symbol in &symbols {
             let Some(bar) = bars.get(symbol) else { continue };
             let Some(market_price) = execution_prices.get(symbol).copied() else { continue };
-            let target_weight = weights.get(symbol).copied().unwrap_or(0.0);
+            let target_weight = weights.get(symbol).copied().unwrap_or_else(|| {
+                portfolio.position(symbol)
+                    .map(|p| p.market_value() / equity)
+                    .unwrap_or(0.0)
+            });
             if target_weight <= 0.0 { continue; }
             let target_value = equity * target_weight;
             let current_quantity = portfolio.position(symbol).map(|p| p.quantity).unwrap_or(0);
