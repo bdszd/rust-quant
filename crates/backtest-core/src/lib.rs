@@ -344,9 +344,60 @@ mod tests {
         }
     }
 
+
+    fn load_test_multi_asset_data(
+        bars: Vec<Bar>,
+    ) -> Result<MultiAssetData, Box<dyn std::error::Error>> {
+        use std::{
+            collections::BTreeMap,
+            fs,
+            sync::atomic::{AtomicUsize, Ordering},
+        };
+
+        static NEXT_FILE_ID: AtomicUsize = AtomicUsize::new(0);
+
+        let mut bars_by_symbol: BTreeMap<String, Vec<Bar>> = BTreeMap::new();
+        for bar in bars {
+            bars_by_symbol
+                .entry(bar.symbol.clone())
+                .or_default()
+                .push(bar);
+        }
+
+        let mut paths = Vec::with_capacity(bars_by_symbol.len());
+        for (symbol, symbol_bars) in bars_by_symbol {
+            let id = NEXT_FILE_ID.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "rust_quant_test_{}_{}_{}.csv",
+                std::process::id(),
+                id,
+                symbol
+            ));
+
+            let mut writer = csv::Writer::from_path(&path)?;
+            for bar in symbol_bars {
+                writer.serialize(bar)?;
+            }
+            writer.flush()?;
+            paths.push(path);
+        }
+
+        let path_strings = paths
+            .iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        let result = load_multi_asset_data(&path_strings);
+
+        for path in paths {
+            let _ = fs::remove_file(path);
+        }
+
+        result
+    }
+
     #[test]
     fn multi_asset_data_builds_union_calendar_without_filling_missing_bars() {
-        let data = MultiAssetData::from_bars(vec![
+        let data = load_test_multi_asset_data(vec![
             make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
             make_symbol_bar("AAA", "2025-01-03", 11.0, 11.0),
             make_symbol_bar("BBB", "2025-01-02", 20.0, 20.0),
@@ -369,7 +420,7 @@ mod tests {
 
     #[test]
     fn portfolio_backtest_tracks_multiple_positions_and_cash() {
-        let data = MultiAssetData::from_bars(vec![
+        let data = load_test_multi_asset_data(vec![
             make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
             make_symbol_bar("BBB", "2025-01-02", 20.0, 20.0),
             make_symbol_bar("AAA", "2025-01-03", 11.0, 11.0),
@@ -431,7 +482,7 @@ mod tests {
 
     #[test]
     fn portfolio_respects_t_plus_one_and_waits_for_symbol_bar() {
-        let data = MultiAssetData::from_bars(vec![
+        let data = load_test_multi_asset_data(vec![
             make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
             make_symbol_bar("AAA", "2025-01-03", 11.0, 11.0),
             make_symbol_bar("AAA", "2025-01-06", 12.0, 12.0),
@@ -459,7 +510,7 @@ mod tests {
 
     #[test]
     fn portfolio_benchmark_comparison_produces_aligned_history() {
-        let data = MultiAssetData::from_bars(vec![
+        let data = load_test_multi_asset_data(vec![
             make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
             make_symbol_bar("AAA", "2025-01-03", 10.0, 11.0),
             make_symbol_bar("AAA", "2025-01-06", 10.0, 12.0),
