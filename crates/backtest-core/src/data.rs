@@ -188,3 +188,14 @@ impl MultiAssetData {
         self.calendar.is_empty()
     }
 }
+
+
+/// 从一个包含多个股票代码的 CSV 中读取组合行情。
+/// 与 load_bars 的单标的校验不同，此入口会按 symbol 分组校验，再构建组合交易日历。
+pub fn load_multi_asset_data(path: &str) -> Result<MultiAssetData, Box<dyn Error>> {
+    let mut reader = csv::Reader::from_path(path)?;
+    let bars: Vec<Bar> = reader.deserialize().collect::<Result<_, _>>()?;
+    MultiAssetData::new(bars).map_err(|message| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, message).into()
+    })
+}
