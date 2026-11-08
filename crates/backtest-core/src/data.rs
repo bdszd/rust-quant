@@ -33,7 +33,7 @@ impl Error for DataValidationError {}
 
 /// 读取 CSV 行情。兼容标准字段以及 Tushare 的 ts_code/trade_date/vol。
 /// 读取后按日期升序排列，并拒绝重复日期、非法 OHLC 和无效成交量。
-pub fn load_bars(path: &str) -> Result<Vec<Bar>, Box<dyn Error>> {
+pub fn load_data(path: &str) -> Result<Vec<Bar>, Box<dyn Error>> {
     let mut reader = csv::Reader::from_path(path)?;
     let mut bars = Vec::new();
 
@@ -159,7 +159,7 @@ pub fn load_multi_asset_data(paths: &[String]) -> Result<MultiAssetData, Box<dyn
     let mut bars_by_date: BTreeMap<String, BTreeMap<String, Bar>> = BTreeMap::new();
 
     for path in paths {
-        let bars = load_bars(path)?;
+        let bars = load_data(path)?;
         let Some(first_bar) = bars.first() else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
