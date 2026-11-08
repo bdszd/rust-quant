@@ -283,14 +283,14 @@ mod tests {
     fn loads_multiple_single_symbol_files_and_builds_union_calendar(
     ) -> Result<(), Box<dyn Error>> {
         let aaa = write_test_csv(concat!(
-            "symbol,date,open,high,low,close,volume\\n",
-            "AAA,2025-01-02,10,10.5,9.5,10,1000\\n",
-            "AAA,2025-01-03,11,11.5,10.5,11,1200\\n",
+            "symbol,date,open,high,low,close,volume\n",
+            "AAA,2025-01-02,10,10.5,9.5,10,1000\n",
+            "AAA,2025-01-03,11,11.5,10.5,11,1200\n",
         ))?;
         let bbb = write_test_csv(concat!(
-            "symbol,date,open,high,low,close,volume\\n",
-            "BBB,2025-01-02,20,20.5,19.5,20,2000\\n",
-            "BBB,2025-01-06,21,21.5,20.5,21,2200\\n",
+            "symbol,date,open,high,low,close,volume\n",
+            "BBB,2025-01-02,20,20.5,19.5,20,2000\n",
+            "BBB,2025-01-06,21,21.5,20.5,21,2200\n",
         ))?;
 
         let paths = vec![
