@@ -120,52 +120,6 @@ pub struct MultiAssetData {
 }
 
 impl MultiAssetData {
-    pub(crate) fn from_bars(mut bars: Vec<Bar>) -> Result<Self, String> {
-        use std::collections::{BTreeMap, BTreeSet};
-
-        if bars.is_empty() {
-            return Err("多标的行情不能为空".into());
-        }
-
-        let mut by_symbol: BTreeMap<String, Vec<Bar>> = BTreeMap::new();
-        for bar in bars.drain(..) {
-            if bar.symbol.trim().is_empty() {
-                return Err(format!("交易日期 {} 的 symbol 不能为空", bar.date));
-            }
-            by_symbol.entry(bar.symbol.clone()).or_default().push(bar);
-        }
-
-        for (symbol, symbol_bars) in &by_symbol {
-            validate_bars(symbol_bars).map_err(|e| format!("{symbol}: {e}"))?;
-        }
-
-        let mut calendar = BTreeSet::new();
-        let mut bars_by_date: BTreeMap<String, BTreeMap<String, Bar>> = BTreeMap::new();
-        for (symbol, mut symbol_bars) in by_symbol {
-            symbol_bars.sort_by(|a, b| a.date.cmp(&b.date));
-            for bar in symbol_bars {
-                calendar.insert(bar.date.clone());
-                bars_by_date
-                    .entry(bar.date.clone())
-                    .or_default()
-                    .insert(symbol.clone(), bar);
-            }
-        }
-
-        let symbols = bars_by_date
-            .values()
-            .flat_map(|day| day.keys().cloned())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-
-        Ok(Self {
-            calendar: calendar.into_iter().collect(),
-            bars_by_date,
-            symbols,
-        })
-    }
-
     pub fn calendar(&self) -> &[String] {
         &self.calendar
     }
