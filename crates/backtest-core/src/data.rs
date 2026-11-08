@@ -154,15 +154,17 @@ impl MultiAssetData {
             }
         }
 
+        let symbols = bars_by_date
+            .values()
+            .flat_map(|day| day.keys().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+
         Ok(Self {
             calendar: calendar.into_iter().collect(),
             bars_by_date,
-            symbols: bars_by_date
-                .values()
-                .flat_map(|day| day.keys().cloned())
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect(),
+            symbols,
         })
     }
 
