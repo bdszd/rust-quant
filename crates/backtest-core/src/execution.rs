@@ -214,8 +214,16 @@ impl MultiAssetExecutionModel {
         if !equity.is_finite() || equity <= 0.0 {
             return Err("组合权益无效，无法计算目标权重".into());
         }
+        let preserved_weight: f64 = portfolio.positions()
+            .iter()
+            .filter(|(symbol, _)| !weights.contains_key(*symbol))
+            .map(|(_, position)| position.market_value() / equity)
+            .sum();
+        if total_weight + preserved_weight > 1.0 + f64::EPSILON {
+            return Err("显式目标权重与未指定持仓的保留权重之和超过 100%".into());
+        }
 
-        // 目标权重未提及的现有持仓视为目标权重 0，即退出该持仓。
+        // 未指定的现有持仓保持当前权重；显式设置为 0 才会退出持仓。
         let symbols: BTreeSet<String> = portfolio.positions().keys()
             .cloned()
             .chain(weights.keys().cloned())
