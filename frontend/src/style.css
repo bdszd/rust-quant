@@ -127,3 +127,90 @@ footer{padding-top:25px;text-align:center;color:#627187;font:9px "DM Mono",monos
 @media(max-width:1150px){.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.content-grid{grid-template-columns:1fr}.form-panel{max-width:none}}
 @media(max-width:850px){.sidebar{width:190px}.main-area{margin-left:190px}.overview-grid{grid-template-columns:1fr}.quick-stats{flex-direction:row;gap:15px}.quick-stats div{flex:1;border:0}.recent-panel{grid-column:auto}}
 @media(max-width:620px){.sidebar{position:static;width:auto;height:auto;padding:13px;border:0;border-bottom:1px solid #202c3a}.brand{padding:0}.nav-caption{display:none}.nav-item{display:inline-flex;width:auto;height:34px;margin:12px 3px 0 0;padding:0 9px;font-size:10px}.sidebar-bottom{position:absolute;top:15px;right:12px;margin:0;padding:0;border:0}.sidebar-bottom small{display:none}.sidebar-bottom b{font-size:9px}.main-area{margin:0;padding:22px 12px}.topbar{align-items:flex-start}h1{font-size:24px}.panel{padding:15px}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.metric-card{padding:12px}.metric-card>strong{font-size:18px}.two-col{gap:8px}.flow{flex-wrap:wrap}.report-heading{align-items:flex-start}.report-heading .button{padding:8px;font-size:9px}.quick-stats b{font-size:18px}}
+
+
+/* Desktop readability pass: slightly larger type and more comfortable spacing. */
+:root {
+  font-size: 16px;
+}
+
+.sidebar {
+  width: 250px;
+  padding: 28px 18px;
+}
+
+.main-area {
+  margin-left: 250px;
+}
+
+.brand b { font-size: 14px; }
+.brand small { font-size: 10px; }
+.nav-caption { font-size: 11px; }
+.nav-item { height: 46px; font-size: 14px; }
+.sidebar-bottom b { font-size: 13px; }
+.sidebar-bottom small { font-size: 11px; }
+
+.topbar p { font-size: 14px; }
+h1 { font-size: 31px; }
+.button { font-size: 13px; padding: 11px 16px; }
+
+.panel { padding: 25px; }
+.panel-title h2 { font-size: 21px; }
+.field > span { font-size: 14px; }
+.field input, .field select { height: 45px; font-size: 14px; padding: 0 13px; }
+.field small { font-size: 12px; }
+.dataset-hint { font-size: 12px; }
+.segmented button { height: 44px; font-size: 13px; }
+.strategy-description, .note-box { font-size: 13px; line-height: 1.85; }
+.submit-button { height: 49px; }
+.task-state { font-size: 11px; }
+.state-badge { font-size: 10px; padding: 6px 9px; }
+
+.guidance-panel h2 { font-size: 22px; }
+.guidance-panel > p, .muted-copy { font-size: 13px; }
+.flow { font-size: 12px; }
+.welcome-panel h2 { font-size: 29px; }
+.welcome-panel p { font-size: 14px; }
+.quick-stats span { font-size: 13px; }
+.quick-stats b { font-size: 25px; }
+.recent-row b { font-size: 13px; }
+.recent-row small { font-size: 11px; }
+
+.dataset-card b { font-size: 14px; }
+.dataset-card div:nth-child(2) small { font-size: 11px; }
+.dataset-card > strong { font-size: 14px; }
+.dataset-card > strong small { font-size: 11px; }
+
+th { font-size: 11px; padding: 14px 12px; }
+td { font-size: 13px; padding: 14px 12px; }
+.text-button { font-size: 12px; }
+.compare-picker label { font-size: 12px; }
+.table-sub { font-size: 10px; }
+
+.empty-state b { font-size: 14px; }
+.empty-state p { font-size: 12px; }
+
+.report-heading h2 { font-size: 23px; }
+.metric-top { font-size: 12px; }
+.metric-card > strong { font-size: 24px; }
+.metric-card > small { font-size: 11px; }
+.chart-labels, .chart-dates { font-size: 11px; }
+
+@media (max-width: 850px) {
+  .sidebar { width: 205px; }
+  .main-area { margin-left: 205px; }
+}
+
+@media (max-width: 620px) {
+  .sidebar { width: auto; }
+  .main-area { margin: 0; }
+  .nav-item { height: 38px; font-size: 12px; }
+  .sidebar-bottom b { font-size: 10px; }
+  .topbar p { font-size: 12px; }
+  h1 { font-size: 25px; }
+  .panel { padding: 16px; }
+  .field > span { font-size: 13px; }
+  .field input, .field select { font-size: 13px; }
+  th { font-size: 10px; }
+  td { font-size: 12px; }
+}
