@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn multi_asset_data_builds_union_calendar_without_filling_missing_bars() {
-        let data = MultiAssetData::new(vec![
+        let data = MultiAssetData::from_bars(vec![
             make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
             make_symbol_bar("AAA", "2025-01-03", 11.0, 11.0),
             make_symbol_bar("BBB", "2025-01-02", 20.0, 20.0),
@@ -369,7 +369,7 @@ mod tests {
 
     #[test]
     fn portfolio_backtest_tracks_multiple_positions_and_cash() {
-        let data = MultiAssetData::new(vec![
+        let data = MultiAssetData::from_bars(vec![
             make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
             make_symbol_bar("BBB", "2025-01-02", 20.0, 20.0),
             make_symbol_bar("AAA", "2025-01-03", 11.0, 11.0),
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn portfolio_respects_t_plus_one_and_waits_for_symbol_bar() {
-        let data = MultiAssetData::new(vec![
+        let data = MultiAssetData::from_bars(vec![
             make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
             make_symbol_bar("AAA", "2025-01-03", 11.0, 11.0),
             make_symbol_bar("AAA", "2025-01-06", 12.0, 12.0),
@@ -459,7 +459,7 @@ mod tests {
 
     #[test]
     fn portfolio_benchmark_comparison_produces_aligned_history() {
-        let data = MultiAssetData::new(vec![
+        let data = MultiAssetData::from_bars(vec![
             make_symbol_bar("AAA", "2025-01-02", 10.0, 10.0),
             make_symbol_bar("AAA", "2025-01-03", 10.0, 11.0),
             make_symbol_bar("AAA", "2025-01-06", 10.0, 12.0),
