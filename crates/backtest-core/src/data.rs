@@ -44,7 +44,6 @@ pub fn load_bars(path: &str) -> Result<Vec<Bar>, Box<dyn Error>> {
 
     validate_bars(&bars)?;
     bars.sort_by(|a, b| a.date.cmp(&b.date));
-    validate_bars(&bars)?;
     Ok(bars)
 }
 
@@ -121,7 +120,7 @@ pub struct MultiAssetData {
 }
 
 impl MultiAssetData {
-    pub fn new(mut bars: Vec<Bar>) -> Result<Self, String> {
+    pub(crate) fn from_bars(mut bars: Vec<Bar>) -> Result<Self, String> {
         use std::collections::{BTreeMap, BTreeSet};
 
         if bars.is_empty() {
@@ -188,11 +187,70 @@ impl MultiAssetData {
     }
 }
 
-/// 从一个包含多个股票代码的 CSV 中读取组合行情。
-/// 与 load_bars 的单标的校验不同，此入口会按 symbol 分组校验，再构建组合交易日历。
-pub fn load_multi_asset_data(path: &str) -> Result<MultiAssetData, Box<dyn Error>> {
-    let mut reader = csv::Reader::from_path(path)?;
-    let bars: Vec<Bar> = reader.deserialize().collect::<Result<_, _>>()?;
-    MultiAssetData::new(bars)
-        .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message).into())
+/// 从多个单标的 CSV 文件加载组合行情。每个文件必须只包含一个股票代码。
+/// 各文件的交易日可以不同，最终交易日历取所有文件日期的并集。
+pub fn load_multi_asset_data(paths: &[String]) -> Result<MultiAssetData, Box<dyn Error>> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    if paths.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "多标的行情文件路径不能为空",
+        )
+        .into());
+    }
+
+    let mut calendar = BTreeSet::new();
+    let mut symbols = BTreeSet::new();
+    let mut bars_by_date: BTreeMap<String, BTreeMap<String, Bar>> = BTreeMap::new();
+
+    for path in paths {
+        let bars = load_bars(path)?;
+        let Some(first_bar) = bars.first() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("行情文件为空：{path}"),
+            )
+            .into());
+        };
+
+        let symbol = first_bar.symbol.trim();
+        if symbol.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("行情文件缺少股票代码：{path}"),
+            )
+            .into());
+        }
+
+        if !symbols.insert(symbol.to_string()) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("多个行情文件包含重复股票代码：{symbol}"),
+            )
+            .into());
+        }
+
+        for bar in bars {
+            if bar.symbol.trim().is_empty() || bar.symbol != symbol {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("行情文件 {path} 必须只包含股票代码 {symbol}"),
+                )
+                .into());
+            }
+
+            calendar.insert(bar.date.clone());
+            bars_by_date
+                .entry(bar.date.clone())
+                .or_default()
+                .insert(symbol.to_string(), bar);
+        }
+    }
+
+    Ok(MultiAssetData {
+        calendar: calendar.into_iter().collect(),
+        bars_by_date,
+        symbols: symbols.into_iter().collect(),
+    })
 }
