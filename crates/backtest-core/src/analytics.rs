@@ -152,7 +152,13 @@ pub struct PortfolioPerformanceMetrics {
     pub sortino_ratio: f64,
     pub calmar_ratio: f64,
     pub benchmark_return: Option<f64>,
+    pub benchmark_annualized_return: Option<f64>,
+    pub benchmark_max_drawdown: Option<f64>,
     pub excess_return: Option<f64>,
+    pub tracking_error: Option<f64>,
+    pub information_ratio: Option<f64>,
+    pub beta: Option<f64>,
+    pub alpha: Option<f64>,
     pub cumulative_turnover_ratio: f64,
     pub win_rate: f64,
     pub profit_factor: f64,
@@ -207,7 +213,7 @@ pub fn calculate_portfolio_metrics(
         annualized_return / max_drawdown
     } else { 0.0 };
 
-    // 按 symbol 独立进行 FIFO 成本配对，绝不跨股票匹配买卖成交。
+    // 按 symbol 独立进行加权平均成本配对，绝不跨股票匹配买卖成交。
     let mut open_positions: BTreeMap<String, (u64, f64)> = BTreeMap::new();
     let mut closed_pnls = Vec::new();
     for trade in trades {
@@ -236,7 +242,7 @@ pub fn calculate_portfolio_metrics(
     let win_rate = if closed_pnls.is_empty() { 0.0 } else {
         closed_pnls.iter().filter(|p| **p > 0.0).count() as f64 / closed_pnls.len() as f64
     };
-    let profit_factor = if losers > 0.0 { winners / losers } else if winners > 0.0 { f64::INFINITY } else { 0.0 };
+    let profit_factor = if losers > 0.0 { winners / losers } else if winners > 0.0 { 999.0 } else { 0.0 };
 
     let traded_value: f64 = trades.iter().map(|t| t.price * t.quantity as f64).sum();
     let average_equity = if history.is_empty() { initial_cash } else {
@@ -270,14 +276,68 @@ pub fn calculate_portfolio_metrics(
         benchmark_history.last().map(|s| s.equity / initial_cash - 1.0)
     });
     let excess_return = benchmark_return.map(|r| total_return - r);
+    let benchmark_annualized_return = benchmark_return.map(|r| {
+        if periods > 0 && 1.0 + r > 0.0 {
+            (1.0 + r).powf(252.0 / periods as f64) - 1.0
+        } else { 0.0 }
+    });
+    let benchmark_max_drawdown = if benchmark_history.is_empty() {
+        None
+    } else {
+        let mut benchmark_peak = initial_cash;
+        let mut drawdown: f64 = 0.0;
+        for snapshot in &benchmark_history {
+            benchmark_peak = benchmark_peak.max(snapshot.equity);
+            if benchmark_peak > 0.0 {
+                drawdown = drawdown.max((benchmark_peak - snapshot.equity) / benchmark_peak);
+            }
+        }
+        Some(drawdown)
+    };
+    let (tracking_error, information_ratio, beta, alpha) = if benchmark_history.len() == returns.len()
+        && !returns.is_empty()
+    {
+        let benchmark_returns: Vec<f64> = benchmark_history.iter().map(|s| s.daily_return).collect();
+        let active_returns: Vec<f64> = returns.iter()
+            .zip(&benchmark_returns)
+            .map(|(portfolio_return, benchmark_return)| portfolio_return - benchmark_return)
+            .collect();
+        let active_mean = active_returns.iter().sum::<f64>() / active_returns.len() as f64;
+        let active_variance = if active_returns.len() > 1 {
+            active_returns.iter().map(|r| (r - active_mean).powi(2)).sum::<f64>()
+                / (active_returns.len() - 1) as f64
+        } else { 0.0 };
+        let tracking = active_variance.sqrt() * 252.0_f64.sqrt();
+        let information = if active_variance > f64::EPSILON {
+            Some(active_mean / active_variance.sqrt() * 252.0_f64.sqrt())
+        } else { None };
+        let benchmark_mean = benchmark_returns.iter().sum::<f64>() / benchmark_returns.len() as f64;
+        let benchmark_variance = if benchmark_returns.len() > 1 {
+            benchmark_returns.iter().map(|r| (r - benchmark_mean).powi(2)).sum::<f64>()
+                / (benchmark_returns.len() - 1) as f64
+        } else { 0.0 };
+        let covariance = if returns.len() > 1 {
+            returns.iter().zip(&benchmark_returns)
+                .map(|(p, b)| (p - mean) * (b - benchmark_mean))
+                .sum::<f64>() / (returns.len() - 1) as f64
+        } else { 0.0 };
+        let calculated_beta = if benchmark_variance > f64::EPSILON {
+            Some(covariance / benchmark_variance)
+        } else { None };
+        let calculated_alpha = calculated_beta.map(|b| (mean - b * benchmark_mean) * 252.0);
+        (Some(tracking), information, calculated_beta, calculated_alpha)
+    } else {
+        (None, None, None, None)
+    };
 
     (
         PortfolioPerformanceMetrics {
             final_equity, total_return, annualized_return, max_drawdown,
             annualized_volatility, sharpe_ratio, sortino_ratio, calmar_ratio,
-            benchmark_return, excess_return, cumulative_turnover_ratio,
-            win_rate, profit_factor, trade_count: trades.len(),
-            closed_trade_count: closed_pnls.len(),
+            benchmark_return, benchmark_annualized_return, benchmark_max_drawdown,
+            excess_return, tracking_error, information_ratio, beta, alpha,
+            cumulative_turnover_ratio, win_rate, profit_factor,
+            trade_count: trades.len(), closed_trade_count: closed_pnls.len(),
         },
         benchmark_history,
     )
