@@ -399,9 +399,11 @@ mod tests {
         };
 
         let result = run_portfolio(&data, &mut strategy, &config, None).unwrap();
-        assert_eq!(result.trades.len(), 2);
+        assert_eq!(result.trades.len(), 4);
         assert_eq!(result.trades[0].symbol, "AAA");
         assert_eq!(result.trades[1].symbol, "BBB");
+        assert_eq!(result.trades[2].side, Side::Sell);
+        assert_eq!(result.trades[3].side, Side::Sell);
         assert!(result.history[1].positions.contains_key("AAA"));
         assert!(result.history[1].positions.contains_key("BBB"));
         assert!(result.history[1].cash > 0.0);
