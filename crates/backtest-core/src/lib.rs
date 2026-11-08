@@ -8,7 +8,7 @@ pub mod indicators;
 pub mod portfolio;
 pub mod strategy;
 
-pub use data::{Bar, MultiAssetData, load_bars};
+pub use data::{Bar, MultiAssetData, load_bars, load_multi_asset_data};
 pub use engine::{BacktestConfig, BacktestResult, PortfolioBacktestResult, run, run_portfolio};
 pub use execution::{ExecutionMode, Trade};
 pub use portfolio::{AssetPosition, AssetPositionSnapshot, MultiAssetPortfolio, MultiAssetSnapshot, PortfolioSnapshot};
