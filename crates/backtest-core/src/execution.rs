@@ -267,10 +267,15 @@ impl MultiAssetExecutionModel {
             let fill_price = market_price * (1.0 + self.slippage_rate);
             let cost_per_share = fill_price * (1.0 + self.commission_rate);
             let affordable = (portfolio.cash() / cost_per_share).floor() as u64 / self.lot_size * self.lot_size;
-            let quantity = desired_quantity.min(affordable);
+            let mut quantity = desired_quantity.min(affordable);
+            let mut amount = quantity as f64 * fill_price;
+            let mut fee = if quantity == 0 { 0.0 } else { (amount * self.commission_rate).max(self.min_commission) };
+            while quantity > 0 && amount + fee > portfolio.cash() + f64::EPSILON {
+                quantity = quantity.saturating_sub(self.lot_size);
+                amount = quantity as f64 * fill_price;
+                fee = if quantity == 0 { 0.0 } else { (amount * self.commission_rate).max(self.min_commission) };
+            }
             if quantity == 0 { continue; }
-            let amount = quantity as f64 * fill_price;
-            let fee = (amount * self.commission_rate).max(self.min_commission);
             let order_id = self.allocate_order_id();
             let fill = Fill {
                 order_id, date: date.to_string(), symbol: symbol.clone(),
