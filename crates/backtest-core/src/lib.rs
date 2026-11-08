@@ -167,6 +167,8 @@ mod tests {
         assert!((buy.price - 101.0).abs() < 1e-9);
         assert_eq!(buy.quantity, 9);
 
+        portfolio.begin_day();
+
         execution
             .execute(&mut portfolio, Signal::Sell, "TEST", "2025-01-02", 100.0)
             .unwrap();
@@ -233,6 +235,8 @@ mod tests {
         assert_eq!(buy.quantity, 900);
         assert!((buy.fee - 5.0).abs() < 1e-9);
         assert!((portfolio.cash() - 995.0).abs() < 1e-9);
+
+        portfolio.begin_day();
 
         execution
             .execute(
@@ -343,7 +347,6 @@ mod tests {
             amount: None,
         }
     }
-
 
     fn load_test_multi_asset_data(
         bars: Vec<Bar>,

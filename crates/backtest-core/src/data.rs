@@ -168,7 +168,7 @@ pub fn load_multi_asset_data(paths: &[String]) -> Result<MultiAssetData, Box<dyn
             .into());
         };
 
-        let symbol = first_bar.symbol.trim();
+        let symbol = first_bar.symbol.trim().to_string();
         if symbol.is_empty() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -209,7 +209,6 @@ pub fn load_multi_asset_data(paths: &[String]) -> Result<MultiAssetData, Box<dyn
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::load_multi_asset_data;
@@ -234,8 +233,8 @@ mod tests {
     }
 
     #[test]
-    fn loads_multiple_single_symbol_files_and_builds_union_calendar(
-    ) -> Result<(), Box<dyn Error>> {
+    fn loads_multiple_single_symbol_files_and_builds_union_calendar() -> Result<(), Box<dyn Error>>
+    {
         let aaa = write_test_csv(concat!(
             "symbol,date,open,high,low,close,volume\n",
             "AAA,2025-01-02,10,10.5,9.5,10,1000\n",

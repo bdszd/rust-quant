@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/engineering/Performance Test Report/增加Metrics模块.md",
+                "file": "docs/engineering/backend-metrics.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "增加Metrics模块"
+              "title": "backend-metrics"
             }
           }
         ],
@@ -204,22 +204,23 @@
       "bases:Create new base": false
     }
   },
-  "active": "91ebac8697bb9f63",
+  "active": "511bb9b46e8e3d23",
   "lastOpenFiles": [
-    "target/debug/deps/quant_backend-cc26bc5298093d66",
-    "target/debug/deps/quant_backend-cc26bc5298093d66.tmp126cc95",
-    "target/debug/deps/rustcMPeYGH/symbols.o",
-    "target/debug/deps/rustcMPeYGH/raw-dylibs",
-    "target/debug/deps/rustcMPeYGH",
-    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hny3ljm4qh-1qo6fsi-c71aai1s043aqb6z9y8tawlaf/work-products.bin",
-    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hny3ljm4qh-1qo6fsi-c71aai1s043aqb6z9y8tawlaf/query-cache.bin",
-    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hny3ljm4qh-1qo6fsi-c71aai1s043aqb6z9y8tawlaf/f2w7yp5t5uksih564vk6zl259.o",
-    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hny3ljm4qh-1qo6fsi-c71aai1s043aqb6z9y8tawlaf/f2554dwb3xv1qdhpy7erdbqd4.o",
-    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hny3ljm4qh-1qo6fsi-c71aai1s043aqb6z9y8tawlaf/f24poev0gxmysxq9v3ypp219d.o",
-    "target/debug/incremental/quant_backend-3hctjq0b6yh4w/s-hny3ljm4qh-1qo6fsi-c71aai1s043aqb6z9y8tawlaf/ez3dvmf6jrtvxoqwyt63sbhwd.o",
-    "monitoring/README.md",
+    "target/debug/deps/quant_backend-5d7e55425e21fe99",
+    "target/debug/incremental/quant_backend-3e1bfzjoyqzc3/s-hnyve7qjgz-16rygw0-3knq47es6i3cmoavldkcgb1ph/work-products.bin",
+    "target/debug/incremental/quant_backend-3e1bfzjoyqzc3/s-hnyve7qjgz-16rygw0-3knq47es6i3cmoavldkcgb1ph/query-cache.bin",
+    "target/debug/incremental/quant_backend-3e1bfzjoyqzc3/s-hnyve7qjgz-16rygw0-3knq47es6i3cmoavldkcgb1ph/f18wk4etlljf5ees4b74c0g56.o",
+    "target/debug/incremental/quant_backend-3e1bfzjoyqzc3/s-hnyve7qjgz-16rygw0-3knq47es6i3cmoavldkcgb1ph/eyhzzjw7o7vi1f9q9fwbbu4c1.o",
+    "target/debug/incremental/quant_backend-3e1bfzjoyqzc3/s-hnyve7qjgz-16rygw0-3knq47es6i3cmoavldkcgb1ph/eyhx9r0cifehrcj41q3iq8a42.o",
+    "target/debug/incremental/quant_backend-3e1bfzjoyqzc3/s-hnyve7qjgz-16rygw0-3knq47es6i3cmoavldkcgb1ph/ey4o55dvrnd5zq0zs72sp3cxw.o",
+    "target/debug/incremental/quant_backend-3e1bfzjoyqzc3/s-hnyve7qjgz-16rygw0-3knq47es6i3cmoavldkcgb1ph/exxzzf2jyoctus5v96wd06kg1.o",
+    "target/debug/incremental/quant_backend-3e1bfzjoyqzc3/s-hnyve7qjgz-16rygw0-3knq47es6i3cmoavldkcgb1ph/ewtu6dlkp4drh0ggf0gcjcgvs.o",
+    "target/debug/incremental/quant_backend-3e1bfzjoyqzc3/s-hnyve7qjgz-16rygw0-3knq47es6i3cmoavldkcgb1ph/ewixxlq4y7iml77bdqly9xao0.o",
+    "target/debug/incremental/quant_backend-3e1bfzjoyqzc3/s-hnyve7qjgz-16rygw0-3knq47es6i3cmoavldkcgb1ph/ek8aplhhbpkeqyemayszgl3gp.o",
+    "docs/跟gpt学话术/第一课(bushi.md",
     "docs/engineering/Performance Test Report/worker-scaling-test.md",
     "docs/engineering/Performance Test Report/增加Metrics模块.md",
+    "monitoring/README.md",
     "docs/engineering/backend-metrics.md",
     "docs/engineering/performance_baseline.md",
     "discription/数据清洗/V1.md",
