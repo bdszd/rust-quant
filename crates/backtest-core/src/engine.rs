@@ -121,3 +121,75 @@ pub fn run<S: Strategy + ?Sized>(
         history,
     }
 }
+
+
+/// V2 多股票组合回测结果。
+#[derive(Debug, Clone)]
+pub struct PortfolioBacktestResult {
+    pub initial_cash: f64,
+    pub metrics: crate::analytics::PortfolioPerformanceMetrics,
+    pub trades: Vec<Trade>,
+    pub history: Vec<crate::portfolio::MultiAssetSnapshot>,
+    pub benchmark_history: Vec<crate::analytics::BenchmarkSnapshot>,
+}
+
+/// 多资产组合回测入口。每个交易日：执行上一交易日的目标权重 -> 收盘估值 -> 生成下一交易日目标权重。
+pub fn run_portfolio<S: crate::strategy::PortfolioStrategy>(
+    data: &crate::data::MultiAssetData,
+    strategy: &mut S,
+    config: &BacktestConfig,
+    benchmark_bars: Option<&[Bar]>,
+) -> Result<PortfolioBacktestResult, String> {
+    config.validate();
+    if let Some(bars) = benchmark_bars {
+        crate::data::validate_bars(bars).map_err(|e| format!("基准数据无效：{e}"))?;
+    }
+
+    let mut portfolio = crate::portfolio::MultiAssetPortfolio::new(config.initial_cash);
+    let mut execution = crate::execution::MultiAssetExecutionModel::new(
+        config.commission_rate,
+        config.slippage_rate,
+        config.lot_size,
+        config.stamp_duty_rate,
+        config.min_commission,
+    );
+    let mut history = Vec::with_capacity(data.len());
+    let mut pending_targets = Vec::new();
+
+    for date in data.calendar() {
+        let bars = data.bars_on(date).ok_or_else(|| format!("交易日历缺少行情映射：{date}"))?;
+        portfolio.begin_day();
+
+        execution.execute_targets(
+            &mut portfolio,
+            &pending_targets,
+            bars,
+            date,
+            config.execution_mode,
+        )?;
+
+        let closes: std::collections::BTreeMap<String, f64> = bars
+            .iter()
+            .map(|(symbol, bar)| (symbol.clone(), bar.close))
+            .collect();
+        let snapshot = portfolio.snapshot(date, &closes);
+        pending_targets = strategy.on_day(date, bars, &snapshot);
+        history.push(snapshot);
+    }
+
+    let trades = execution.trades().to_vec();
+    let (metrics, benchmark_history) = crate::analytics::calculate_portfolio_metrics(
+        config.initial_cash,
+        &history,
+        &trades,
+        benchmark_bars,
+    );
+
+    Ok(PortfolioBacktestResult {
+        initial_cash: config.initial_cash,
+        metrics,
+        trades,
+        history,
+        benchmark_history,
+    })
+}
