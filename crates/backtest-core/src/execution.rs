@@ -137,3 +137,160 @@ impl ExecutionModel {
         &self.trades
     }
 }
+
+
+/// V2 多资产组合执行器。卖单先于买单处理，避免买单抢占尚未释放的卖出资金。
+pub struct MultiAssetExecutionModel {
+    commission_rate: f64,
+    slippage_rate: f64,
+    lot_size: u64,
+    stamp_duty_rate: f64,
+    min_commission: f64,
+    next_order_id: u64,
+    trades: Vec<Fill>,
+}
+
+impl MultiAssetExecutionModel {
+    pub(crate) fn new(
+        commission_rate: f64,
+        slippage_rate: f64,
+        lot_size: u64,
+        stamp_duty_rate: f64,
+        min_commission: f64,
+    ) -> Self {
+        Self {
+            commission_rate,
+            slippage_rate,
+            lot_size,
+            stamp_duty_rate,
+            min_commission,
+            next_order_id: 1,
+            trades: Vec::new(),
+        }
+    }
+
+    pub(crate) fn execute_targets(
+        &mut self,
+        portfolio: &mut crate::portfolio::MultiAssetPortfolio,
+        targets: &[crate::strategy::TargetWeight],
+        bars: &std::collections::BTreeMap<String, crate::data::Bar>,
+        date: &str,
+        mode: ExecutionMode,
+    ) -> Result<(), String> {
+        use std::collections::{BTreeMap, BTreeSet};
+        let mut weights = BTreeMap::new();
+        let mut total_weight = 0.0;
+        for target in targets {
+            if target.symbol.trim().is_empty()
+                || !target.weight.is_finite()
+                || !(0.0..=1.0).contains(&target.weight)
+            {
+                return Err("目标权重或股票代码无效".into());
+            }
+            if weights.insert(target.symbol.clone(), target.weight).is_some() {
+                return Err(format!("目标权重中存在重复股票：{}", target.symbol));
+            }
+            total_weight += target.weight;
+        }
+        if total_weight > 1.0 + f64::EPSILON {
+            return Err("目标权重之和不能超过 100%".into());
+        }
+
+        let price_of = |bar: &crate::data::Bar| match mode {
+            ExecutionMode::NextOpen => bar.open,
+            ExecutionMode::NextClose => bar.close,
+        };
+        let mut execution_prices = BTreeMap::new();
+        for (symbol, bar) in bars {
+            let price = price_of(bar);
+            if !price.is_finite() || price <= 0.0 {
+                continue;
+            }
+            execution_prices.insert(symbol.clone(), price);
+        }
+        portfolio.update_prices(&execution_prices);
+        let equity = portfolio.equity();
+        if !equity.is_finite() || equity <= 0.0 {
+            return Err("组合权益无效，无法计算目标权重".into());
+        }
+
+        // 目标权重未提及的现有持仓视为目标权重 0，即退出该持仓。
+        let symbols: BTreeSet<String> = portfolio.positions().keys()
+            .cloned()
+            .chain(weights.keys().cloned())
+            .collect();
+
+        // 第一阶段：卖出超出目标权重的部分。
+        for symbol in &symbols {
+            let Some(bar) = bars.get(symbol) else { continue };
+            let Some(market_price) = execution_prices.get(symbol).copied() else { continue };
+            let target_weight = weights.get(symbol).copied().unwrap_or(0.0);
+            let target_value = equity * target_weight;
+            let target_quantity = (target_value / market_price).floor() as u64 / self.lot_size * self.lot_size;
+            let Some(position) = portfolio.position(symbol) else { continue };
+            let current_quantity = position.quantity;
+            let sellable = position.sellable_quantity;
+            let quantity = if target_weight == 0.0 {
+                sellable
+            } else {
+                current_quantity.saturating_sub(target_quantity).min(sellable)
+                    / self.lot_size * self.lot_size
+            };
+            if quantity == 0 { continue; }
+            let fill_price = market_price * (1.0 - self.slippage_rate);
+            let amount = quantity as f64 * fill_price;
+            let commission = (amount * self.commission_rate).max(self.min_commission);
+            let fee = commission + amount * self.stamp_duty_rate;
+            let order_id = self.allocate_order_id();
+            let fill = Fill {
+                order_id, date: date.to_string(), symbol: symbol.clone(),
+                side: Side::Sell, quantity, price: fill_price, fee,
+            };
+            fill.validate()?;
+            portfolio.apply_sell(symbol, quantity, fill_price, fee)?;
+            self.trades.push(fill);
+            let _ = bar;
+        }
+
+        // 第二阶段：用卖出后释放的现金执行买入；逐标的按字典序执行，结果可复现。
+        for symbol in &symbols {
+            let Some(bar) = bars.get(symbol) else { continue };
+            let Some(market_price) = execution_prices.get(symbol).copied() else { continue };
+            let target_weight = weights.get(symbol).copied().unwrap_or(0.0);
+            if target_weight <= 0.0 { continue; }
+            let target_value = equity * target_weight;
+            let current_quantity = portfolio.position(symbol).map(|p| p.quantity).unwrap_or(0);
+            let target_quantity = (target_value / market_price).floor() as u64 / self.lot_size * self.lot_size;
+            let desired_quantity = target_quantity.saturating_sub(current_quantity);
+            if desired_quantity == 0 { continue; }
+
+            let fill_price = market_price * (1.0 + self.slippage_rate);
+            let cost_per_share = fill_price * (1.0 + self.commission_rate);
+            let affordable = (portfolio.cash() / cost_per_share).floor() as u64 / self.lot_size * self.lot_size;
+            let quantity = desired_quantity.min(affordable);
+            if quantity == 0 { continue; }
+            let amount = quantity as f64 * fill_price;
+            let fee = (amount * self.commission_rate).max(self.min_commission);
+            let order_id = self.allocate_order_id();
+            let fill = Fill {
+                order_id, date: date.to_string(), symbol: symbol.clone(),
+                side: Side::Buy, quantity, price: fill_price, fee,
+            };
+            fill.validate()?;
+            portfolio.apply_buy(symbol, quantity, fill_price, fee)?;
+            self.trades.push(fill);
+            let _ = bar;
+        }
+        Ok(())
+    }
+
+    fn allocate_order_id(&mut self) -> u64 {
+        let id = self.next_order_id;
+        self.next_order_id += 1;
+        id
+    }
+
+    pub fn trades(&self) -> &[Fill] {
+        &self.trades
+    }
+}
