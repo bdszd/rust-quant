@@ -254,3 +254,66 @@ pub fn load_multi_asset_data(paths: &[String]) -> Result<MultiAssetData, Box<dyn
         symbols: symbols.into_iter().collect(),
     })
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::load_multi_asset_data;
+    use std::{
+        error::Error,
+        fs,
+        path::PathBuf,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+
+    static NEXT_FILE_ID: AtomicUsize = AtomicUsize::new(0);
+
+    fn write_test_csv(contents: &str) -> Result<PathBuf, Box<dyn Error>> {
+        let id = NEXT_FILE_ID.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "rust_quant_multi_asset_{}_{}.csv",
+            std::process::id(),
+            id
+        ));
+        fs::write(&path, contents)?;
+        Ok(path)
+    }
+
+    #[test]
+    fn loads_multiple_single_symbol_files_and_builds_union_calendar(
+    ) -> Result<(), Box<dyn Error>> {
+        let aaa = write_test_csv(concat!(
+            "symbol,date,open,high,low,close,volume\\n",
+            "AAA,2025-01-02,10,10.5,9.5,10,1000\\n",
+            "AAA,2025-01-03,11,11.5,10.5,11,1200\\n",
+        ))?;
+        let bbb = write_test_csv(concat!(
+            "symbol,date,open,high,low,close,volume\\n",
+            "BBB,2025-01-02,20,20.5,19.5,20,2000\\n",
+            "BBB,2025-01-06,21,21.5,20.5,21,2200\\n",
+        ))?;
+
+        let paths = vec![
+            aaa.to_string_lossy().into_owned(),
+            bbb.to_string_lossy().into_owned(),
+        ];
+        let result = load_multi_asset_data(&paths);
+
+        let _ = fs::remove_file(&aaa);
+        let _ = fs::remove_file(&bbb);
+
+        let data = result?;
+        assert_eq!(
+            data.calendar(),
+            &vec![
+                "2025-01-02".to_string(),
+                "2025-01-03".to_string(),
+                "2025-01-06".to_string(),
+            ]
+        );
+        assert_eq!(data.symbols(), &vec!["AAA".to_string(), "BBB".to_string()]);
+        assert_eq!(data.bars_on("2025-01-03").unwrap().len(), 1);
+        assert!(!data.bars_on("2025-01-03").unwrap().contains_key("BBB"));
+        Ok(())
+    }
+}
