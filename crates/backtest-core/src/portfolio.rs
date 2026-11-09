@@ -181,6 +181,8 @@ pub struct MultiAssetSnapshot {
     pub cash: f64,
     pub positions: BTreeMap<String, AssetPositionSnapshot>,
     pub market_value: f64,
+    pub unrealized_pnl: f64,
+    pub realized_pnl: f64,
     pub equity: f64,
     pub daily_return: f64,
     pub drawdown: f64,
@@ -262,6 +264,17 @@ impl MultiAssetPortfolio {
             })
             .collect();
         let market_value = positions.values().map(|p| p.market_value).sum::<f64>();
+        // 已平仓标的不会出现在 positions 快照中，但其累计已实现盈亏仍属于账户历史。
+        let unrealized_pnl = self
+            .positions()
+            .values()
+            .map(AssetPosition::unrealized_pnl)
+            .sum::<f64>();
+        let realized_pnl = self
+            .positions()
+            .values()
+            .map(|position| position.realized_pnl)
+            .sum::<f64>();
         let cash = self.cash();
         let equity = cash + market_value;
         let (daily_return, drawdown) = self.performance.record(equity);
@@ -271,6 +284,8 @@ impl MultiAssetPortfolio {
             cash,
             positions,
             market_value,
+            unrealized_pnl,
+            realized_pnl,
             equity,
             daily_return,
             drawdown,
@@ -328,6 +343,27 @@ mod tests {
         assert_eq!(second.equity, 9_900.0);
         assert!(second.daily_return < 0.0);
         assert!((second.drawdown - (200.0 / 10_100.0)).abs() < 1e-12);
+    }
+
+
+    #[test]
+    fn multi_asset_snapshot_keeps_realized_pnl_after_position_is_closed() {
+        let mut portfolio = MultiAssetPortfolio::new(10_000.0);
+        portfolio
+            .apply_fill(&fill("AAA", Side::Buy, 100, 10.0))
+            .unwrap();
+        portfolio.begin_day();
+        portfolio
+            .apply_fill(&fill("AAA", Side::Sell, 100, 11.0))
+            .unwrap();
+
+        let snapshot = portfolio.snapshot("2025-01-03", &BTreeMap::new());
+
+        assert!(snapshot.positions.is_empty());
+        assert_eq!(snapshot.market_value, 0.0);
+        assert_eq!(snapshot.realized_pnl, 100.0);
+        assert_eq!(snapshot.unrealized_pnl, 0.0);
+        assert_eq!(snapshot.equity, 10_100.0);
     }
 
     #[test]
