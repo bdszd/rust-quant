@@ -142,10 +142,6 @@ pub fn run_portfolio<S: crate::strategy::PortfolioStrategy>(
     benchmark_bars: Option<&[Bar]>,
 ) -> Result<PortfolioBacktestResult, String> {
     config.validate();
-    if let Some(bars) = benchmark_bars {
-        crate::data::validate_bars(bars).map_err(|e| format!("基准数据无效：{e}"))?;
-    }
-
     let mut portfolio = crate::portfolio::MultiAssetPortfolio::new(config.initial_cash);
     let mut execution = crate::execution::MultiAssetExecutionModel::new(
         config.commission_rate,
