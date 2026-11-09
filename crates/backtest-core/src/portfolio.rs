@@ -21,19 +21,13 @@ pub struct PortfolioSnapshot {
 /// 单标的回测估值器。账户现金和持仓状态由 trading-core::Account 管理。
 pub struct Portfolio {
     account: Account,
-    previous_equity: f64,
-    peak_equity: f64,
 }
 
 impl Portfolio {
     pub(crate) fn new(initial_cash: f64) -> Self {
         let account = Account::new(initial_cash)
             .expect("BacktestConfig must validate initial_cash before portfolio creation");
-        Self {
-            account,
-            previous_equity: initial_cash,
-            peak_equity: initial_cash,
-        }
+        Self { account }
     }
 
     pub fn cash(&self) -> f64 {
@@ -71,7 +65,6 @@ impl Portfolio {
 
     /// 收盘估值，同时更新每日收益和相对历史峰值的回撤。
     pub fn snapshot(&mut self, date: &str, close: f64) -> PortfolioSnapshot {
-        assert!(close.is_finite() && close > 0.0, "收盘价必须是有限的正数");
         let position = self.account.positions().values().next();
         let quantity = position.map(|p| p.quantity).unwrap_or(0);
         let average_cost = position.map(|p| p.average_cost).unwrap_or(0.0);
@@ -79,24 +72,11 @@ impl Portfolio {
         let cash = self.account.cash();
         let market_value = quantity as f64 * close;
         let equity = cash + market_value;
-        let daily_return = if self.previous_equity > 0.0 {
-            equity / self.previous_equity - 1.0
-        } else {
-            0.0
-        };
-        self.peak_equity = self.peak_equity.max(equity);
-        let drawdown = if self.peak_equity > 0.0 {
-            (self.peak_equity - equity) / self.peak_equity
-        } else {
-            0.0
-        };
         let unrealized_pnl = if quantity > 0 {
             (close - average_cost) * quantity as f64
         } else {
             0.0
         };
-        self.previous_equity = equity;
-
         PortfolioSnapshot {
             date: date.to_string(),
             cash,
@@ -107,8 +87,8 @@ impl Portfolio {
             unrealized_pnl,
             realized_pnl,
             equity,
-            daily_return,
-            drawdown,
+            daily_return: 0.0,
+            drawdown: 0.0,
         }
     }
 }
@@ -141,19 +121,13 @@ pub struct MultiAssetSnapshot {
 /// 多资产回测估值器。交易账户本身由 trading-core::Account 管理。
 pub struct MultiAssetPortfolio {
     account: Account,
-    previous_equity: f64,
-    peak_equity: f64,
 }
 
 impl MultiAssetPortfolio {
     pub(crate) fn new(initial_cash: f64) -> Self {
         let account = Account::new(initial_cash)
             .expect("BacktestConfig must validate initial_cash before portfolio creation");
-        Self {
-            account,
-            previous_equity: initial_cash,
-            peak_equity: initial_cash,
-        }
+        Self { account }
     }
 
     pub fn cash(&self) -> f64 {
@@ -218,27 +192,14 @@ impl MultiAssetPortfolio {
         let market_value = positions.values().map(|p| p.market_value).sum::<f64>();
         let cash = self.cash();
         let equity = cash + market_value;
-        let daily_return = if self.previous_equity > 0.0 {
-            equity / self.previous_equity - 1.0
-        } else {
-            0.0
-        };
-        self.peak_equity = self.peak_equity.max(equity);
-        let drawdown = if self.peak_equity > 0.0 {
-            (self.peak_equity - equity) / self.peak_equity
-        } else {
-            0.0
-        };
-        self.previous_equity = equity;
-
         MultiAssetSnapshot {
             date: date.to_string(),
             cash,
             positions,
             market_value,
             equity,
-            daily_return,
-            drawdown,
+            daily_return: 0.0,
+            drawdown: 0.0,
         }
     }
 }
