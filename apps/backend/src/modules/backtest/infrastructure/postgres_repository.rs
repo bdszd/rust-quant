@@ -382,7 +382,7 @@ impl PgBacktestRepository {
             tx.commit()
                 .await
                 .map_err(|error| format!("提交重复任务事务失败：{error}"))?;
-            return Ok(None);
+            return Ok(ClaimExecutionOutcome::AlreadyFinished);
         }
 
         if status == "running" {
@@ -401,43 +401,39 @@ impl PgBacktestRepository {
             .await
             .map_err(|error| format!("检查旧执行租约失败：{error}"))?;
 
-            let Some(active) = active else {
-                tx.commit()
-                    .await
-                    .map_err(|error| format!("提交无活动执行记录事务失败：{error}"))?;
-                return Ok(None);
-            };
+            if let Some(active) = active {
+                let expired: bool = active
+                    .try_get("expired")
+                    .map_err(|error| format!("读取租约状态失败：{error}"))?;
+                if !expired {
+                    tx.commit()
+                        .await
+                        .map_err(|error| format!("提交未过期租约事务失败：{error}"))?;
+                    return Ok(ClaimExecutionOutcome::LeaseHeld);
+                }
 
-            let expired: bool = active
-                .try_get("expired")
-                .map_err(|error| format!("读取租约状态失败：{error}"))?;
-            if !expired {
-                tx.commit()
-                    .await
-                    .map_err(|error| format!("提交未过期租约事务失败：{error}"))?;
-                return Ok(None);
+                let old_attempt_id: Uuid = active
+                    .try_get("id")
+                    .map_err(|error| format!("读取旧 Attempt ID 失败：{error}"))?;
+                sqlx::query(
+                    r#"
+                    UPDATE backtest_task_attempts
+                    SET status = 'interrupted',
+                        finished_at = NOW(),
+                        error = 'worker lease expired'
+                    WHERE id = $1 AND status = 'running'
+                    "#,
+                )
+                .bind(old_attempt_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|error| format!("标记过期 Attempt 失败：{error}"))?;
             }
-
-            let old_attempt_id: Uuid = active
-                .try_get("id")
-                .map_err(|error| format!("读取旧 Attempt ID 失败：{error}"))?;
-            sqlx::query(
-                r#"
-                UPDATE backtest_task_attempts
-                SET status = 'interrupted', finished_at = NOW(),
-                    error = 'worker lease expired'
-                WHERE id = $1 AND status = 'running'
-                "#,
-            )
-            .bind(old_attempt_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|error| format!("标记过期 Attempt 失败：{error}"))?;
         } else if status != "queued" {
             tx.commit()
                 .await
                 .map_err(|error| format!("提交未知状态事务失败：{error}"))?;
-            return Ok(None);
+            return Ok(ClaimExecutionOutcome::AlreadyFinished);
         }
 
         let config_json: String = sqlx::query_scalar(
@@ -454,7 +450,7 @@ impl PgBacktestRepository {
             .map_err(|error| format!("解析回测 Job 配置失败：{error}"))?;
 
         let attempt_number: i32 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(attempt_number), 0) + 1 FROM backtest_task_attempts WHERE task_id = $1"
+            "SELECT COALESCE(MAX(attempt_number), 0) + 1 FROM backtest_task_attempts WHERE task_id = $1",
         )
         .bind(task_id)
         .fetch_one(&mut *tx)
