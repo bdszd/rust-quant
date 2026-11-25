@@ -16,10 +16,7 @@ use crate::{
                     OutboxRepository,
                 },
             },
-            infrastructure::{
-                backtest_executor::BacktestCoreExecutor,
-                postgres_repository::PgBacktestRepository,
-            },
+            infrastructure::{backtest_executor::BacktestCoreExecutor, postgres_repository::PgBacktestRepository},
         },
         dataset::{
             application::DatasetApplicationService,
@@ -58,8 +55,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let publisher_repository: Arc<dyn OutboxRepository> = repository.clone();
     let worker_repository: Arc<dyn BacktestExecutionRepository> = repository.clone();
     let application_repository: Arc<dyn BacktestRepository> = repository.clone();
-    let worker_execution_service =
-        Arc::new(BacktestExecutionService::new(worker_repository));
+    let worker_execution_service = Arc::new(BacktestExecutionService::new(worker_repository));
 
     let dataset_catalog = Arc::new(FilesystemDatasetCatalog::new(data_dir.clone()));
     let backtest = Arc::new(BacktestApplicationService::new(
