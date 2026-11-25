@@ -4,7 +4,10 @@ use axum::{
     body::{Body, to_bytes},
     http::{Request, StatusCode, header},
 };
-use identity::auth::{AuthenticationService, RegistrationService};
+use identity::{
+    auth::{AuthenticationService, RegistrationService},
+    user::{NewUser, RegistrationService as _, UserRepository, UserStatus},
+};
 use quant_backend::{
     app::{router::build_router, state::AppState},
     modules::{
@@ -237,6 +240,78 @@ async fn duplicate_registration_returns_conflict(pool: PgPool) {
 
     let second = send(&app, json_request("POST", "/api/auth/register", payload)).await;
     assert_eq!(second.status(), StatusCode::CONFLICT);
+
+    fs::remove_dir_all(data_dir).unwrap();
+}
+
+
+#[sqlx::test(migrations = "./migrations")]
+async fn login_does_not_reveal_disabled_account_status(pool: PgPool) {
+    let (app, data_dir) = test_app(pool.clone());
+
+    let response = send(
+        &app,
+        json_request(
+            "POST",
+            "/api/auth/register",
+            serde_json::json!({
+                "username": "disabled_http_user",
+                "email": "disabled-http@example.test",
+                "password": "correct-horse-battery"
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let user = UserRepository::new(pool.clone())
+        .find_by_username("disabled_http_user")
+        .await
+        .unwrap()
+        .expect("registered user should exist");
+
+    UserRepository::new(pool)
+        .update_status(user.id, UserStatus::Disabled)
+        .await
+        .unwrap()
+        .expect("user should exist");
+
+    let disabled_response = send(
+        &app,
+        json_request(
+            "POST",
+            "/api/auth/login",
+            serde_json::json!({
+                "identifier": "disabled_http_user",
+                "password": "correct-horse-battery"
+            }),
+        ),
+    )
+    .await;
+
+    let invalid_password_response = send(
+        &app,
+        json_request(
+            "POST",
+            "/api/auth/login",
+            serde_json::json!({
+                "identifier": "disabled_http_user",
+                "password": "wrong-password"
+            }),
+        ),
+    )
+    .await;
+
+    assert_eq!(disabled_response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(invalid_password_response.status(), StatusCode::UNAUTHORIZED);
+
+    let disabled_body =
+        to_bytes(disabled_response.into_body(), usize::MAX).await.unwrap();
+    let invalid_password_body =
+        to_bytes(invalid_password_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+    assert_eq!(disabled_body, invalid_password_body);
 
     fs::remove_dir_all(data_dir).unwrap();
 }
