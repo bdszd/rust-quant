@@ -17,12 +17,11 @@ use modules::{
         application::{
             BacktestApplicationService,
             execution::BacktestExecutionService,
-            ports::{BacktestExecutionRepository, BacktestExecutor, BacktestRepository, OutboxRepository},
+            ports::{
+                BacktestExecutionRepository, BacktestExecutor, BacktestRepository, OutboxRepository,
+            },
         },
-        infrastructure::{
-            backtest_executor::BacktestCoreExecutor,
-            postgres_repository::PgBacktestRepository,
-        },
+        infrastructure::{backtest_executor::BacktestCoreExecutor, postgres_repository::PgBacktestRepository},
     },
     dataset::{
         application::DatasetApplicationService,
@@ -82,10 +81,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 5. 初始化进程级性能统计。
     let metrics = Arc::new(Metrics::new(WORKER_COUNT));
-    let worker_executor: Arc<dyn BacktestExecutor> = Arc::new(BacktestCoreExecutor::new(
-        data_dir.clone(),
-        metrics.clone(),
-    ));
+    let worker_executor: Arc<dyn BacktestExecutor> =
+        Arc::new(BacktestCoreExecutor::new(data_dir.clone(), metrics.clone()));
 
     // 6. 创建认证服务。
     // 认证服务和 Backend 使用同一个 PostgreSQL 连接池。
