@@ -20,8 +20,8 @@ use quant_backend::{
             infrastructure::filesystem_catalog::FilesystemDatasetCatalog,
         },
     },
-    observability::metrics::Metrics,
     infrastructure::security::login_rate_limiter::LoginRateLimiter,
+    observability::metrics::Metrics,
 };
 use sqlx::PgPool;
 use tower::ServiceExt;
@@ -320,7 +320,6 @@ async fn login_does_not_reveal_disabled_account_status(pool: PgPool) {
     fs::remove_dir_all(data_dir).unwrap();
 }
 
-
 #[sqlx::test(migrations = "./migrations")]
 async fn login_is_rate_limited_after_ten_attempts(pool: PgPool) {
     let (app, data_dir) = test_app(pool);
@@ -389,13 +388,19 @@ async fn cors_only_allows_configured_origins(pool: PgPool) {
             .uri("/api/auth/login")
             .header(header::ORIGIN, "http://localhost:5173")
             .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
-            .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "authorization,content-type")
+            .header(
+                header::ACCESS_CONTROL_REQUEST_HEADERS,
+                "authorization,content-type",
+            )
             .body(Body::empty())
             .unwrap(),
     )
     .await;
     assert_eq!(
-        allowed.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).unwrap(),
+        allowed
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .unwrap(),
         "http://localhost:5173"
     );
 
@@ -410,7 +415,12 @@ async fn cors_only_allows_configured_origins(pool: PgPool) {
             .unwrap(),
     )
     .await;
-    assert!(denied.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
+    assert!(
+        denied
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .is_none()
+    );
 
     fs::remove_dir_all(data_dir).unwrap();
 }
