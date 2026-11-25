@@ -262,9 +262,14 @@ async fn process_delivery(
     };
 
     println!(
-        "Worker 已认领任务 {}，Attempt {}",
-        claimed.task_id, claimed.attempt.attempt_number
+        "Worker 已认领任务 {}，Attempt {}，状态 {}",
+        claimed.task_id,
+        claimed.attempt.attempt_number,
+        claimed.attempt.status.as_str()
     );
+    if let Some(error) = &claimed.attempt.error {
+        eprintln!("Attempt 初始化错误：{error}");
+    }
     metrics.worker_started();
 
     // 执行期间定时续租，避免长回测被其他 Worker 当成过期任务接管。
