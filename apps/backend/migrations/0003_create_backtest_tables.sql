@@ -1,3 +1,48 @@
+-- Preserve legacy tables from the pre-normalized backend.
+-- The old schema used string task IDs and embedded job JSON. Keep those records
+-- under explicit legacy names instead of colliding with the new UUID schema.
+DO $
+BEGIN
+    IF to_regclass('public.backtest_tasks') IS NOT NULL
+       AND NOT EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name = 'backtest_tasks'
+             AND column_name = 'user_id'
+       ) THEN
+        IF to_regclass('public.backtest_tasks_legacy_v1') IS NOT NULL THEN
+            RAISE EXCEPTION 'backtest_tasks_legacy_v1 already exists; inspect legacy data before migration';
+        END IF;
+        ALTER TABLE public.backtest_tasks RENAME TO backtest_tasks_legacy_v1;
+    END IF;
+
+    IF to_regclass('public.backtest_outbox') IS NOT NULL
+       AND NOT EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name = 'backtest_outbox'
+             AND column_name = 'event_type'
+       ) THEN
+        IF to_regclass('public.backtest_outbox_legacy_v1') IS NOT NULL THEN
+            RAISE EXCEPTION 'backtest_outbox_legacy_v1 already exists; inspect legacy data before migration';
+        END IF;
+        ALTER TABLE public.backtest_outbox RENAME TO backtest_outbox_legacy_v1;
+    END IF;
+
+    IF to_regclass('public.backtest_jobs') IS NOT NULL
+       AND NOT EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name = 'backtest_jobs'
+             AND column_name = 'config'
+       ) THEN
+        IF to_regclass('public.backtest_jobs_legacy_v1') IS NOT NULL THEN
+            RAISE EXCEPTION 'backtest_jobs_legacy_v1 already exists; inspect legacy data before migration';
+        END IF;
+        ALTER TABLE public.backtest_jobs RENAME TO backtest_jobs_legacy_v1;
+    END IF;
+END $;
+
 -- Backtest persistence model.
 --
 -- Task is the user-visible request. Job is its immutable execution configuration.
