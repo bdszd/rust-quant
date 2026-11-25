@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::ports::DatasetCatalog;
+use self::ports::DatasetCatalog;
 
 pub mod ports;
 pub mod query;
