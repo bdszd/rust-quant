@@ -2,8 +2,7 @@ use std::{path::PathBuf, fs};
 
 use crate::{
     modules::{
-        backtest::application::ports::DatasetCatalog,
-        dataset::application::query::DatasetSummary,
+        dataset::application::{ports::DatasetCatalog, query::DatasetSummary},
     },
 };
 
