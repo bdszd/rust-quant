@@ -5,7 +5,10 @@ use uuid::Uuid;
 
 use crate::modules::backtest::{
     application::{
-        ports::{BacktestRepository, OutboxRepository, PendingOutboxEvent},
+        ports::{
+                BacktestExecutionRepository, BacktestRepository, ClaimExecutionOutcome,
+                ClaimedBacktestJob, OutboxRepository, PendingOutboxEvent,
+            },
         queries::BacktestTaskView,
     },
     domain::{
@@ -330,21 +333,6 @@ impl OutboxRepository for PgBacktestRepository {
 
         Ok(())
     }
-}
-
-/// Worker 成功认领任务后获得的不可变执行配置。
-#[derive(Debug, Clone)]
-pub struct ClaimedBacktestJob {
-    pub task_id: Uuid,
-    pub attempt: BacktestAttempt,
-    pub config: crate::modules::backtest::domain::BacktestJobConfig,
-}
-
-#[derive(Debug)]
-pub enum ClaimExecutionOutcome {
-    Claimed(ClaimedBacktestJob),
-    AlreadyFinished,
-    LeaseHeld,
 }
 
 impl PgBacktestRepository {
@@ -699,5 +687,67 @@ impl PgBacktestRepository {
         tx.commit()
             .await
             .map_err(|error| format!("提交失败结果事务失败：{error}"))
+    }
+}
+
+
+#[async_trait]
+impl BacktestExecutionRepository for PgBacktestRepository {
+    async fn claim_execution(
+        &self,
+        task_id: Uuid,
+        job_id: Uuid,
+        worker_id: &str,
+        lease_seconds: i64,
+    ) -> Result<ClaimExecutionOutcome, String> {
+        PgBacktestRepository::claim_execution(self, task_id, job_id, worker_id, lease_seconds)
+            .await
+    }
+
+    async fn heartbeat_attempt(
+        &self,
+        attempt_id: Uuid,
+        worker_id: &str,
+        lease_seconds: i64,
+    ) -> Result<bool, String> {
+        PgBacktestRepository::heartbeat_attempt(self, attempt_id, worker_id, lease_seconds).await
+    }
+
+    async fn complete_success(
+        &self,
+        attempt_id: Uuid,
+        task_id: Uuid,
+        worker_id: &str,
+        payload: &Value,
+        duration_ms: i64,
+    ) -> Result<(), String> {
+        PgBacktestRepository::complete_success(
+            self,
+            attempt_id,
+            task_id,
+            worker_id,
+            payload,
+            duration_ms,
+        )
+        .await
+    }
+
+    async fn complete_failure(
+        &self,
+        attempt_id: Uuid,
+        task_id: Uuid,
+        worker_id: &str,
+        message: &str,
+        duration_ms: Option<i64>,
+    ) -> Result<(), String> {
+        PgBacktestRepository::complete_failure(
+            self,
+            attempt_id,
+            task_id,
+            worker_id,
+            message,
+            duration_ms,
+        )
+        .await
     }
 }
