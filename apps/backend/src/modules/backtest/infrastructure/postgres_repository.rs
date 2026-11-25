@@ -527,6 +527,8 @@ impl PgBacktestRepository {
         payload: &Value,
         duration_ms: i64,
     ) -> Result<(), String> {
+        let payload_json = serde_json::to_string(payload)
+            .map_err(|error| format!("序列化回测结果失败：{error}"))?;
         let mut tx = self
             .pool
             .begin()
