@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde_json::Value;
 use uuid::Uuid;
 
 use super::queries::BacktestTaskView;
@@ -18,6 +19,41 @@ pub trait BacktestRepository: Send + Sync {
     async fn find_task(&self, task_id: Uuid) -> Result<Option<BacktestTaskView>, String>;
 
     async fn list_tasks(&self, limit: i64) -> Result<Vec<BacktestTaskView>, String>;
+}
+
+/// Publisher 从持久化队列中领取的事件。
+#[derive(Debug, Clone)]
+pub struct PendingOutboxEvent {
+    pub id: Uuid,
+    pub task_id: Uuid,
+    pub event_type: String,
+    pub payload: Value,
+}
+
+/// Outbox 的持久化能力。
+///
+/// 使用带期限的领取锁，避免多个 Publisher 同时处理同一条待发送事件。
+#[async_trait]
+pub trait OutboxRepository: Send + Sync {
+    async fn claim_pending(
+        &self,
+        publisher_id: &str,
+        limit: i64,
+        lease_seconds: i64,
+    ) -> Result<Vec<PendingOutboxEvent>, String>;
+
+    async fn mark_published(
+        &self,
+        event_id: Uuid,
+        publisher_id: &str,
+    ) -> Result<bool, String>;
+
+    async fn release_after_failure(
+        &self,
+        event_id: Uuid,
+        publisher_id: &str,
+        error: &str,
+    ) -> Result<(), String>;
 }
 
 /// 应用层需要的数据集目录能力。
