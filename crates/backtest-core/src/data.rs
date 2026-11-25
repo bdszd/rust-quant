@@ -216,8 +216,8 @@ mod tests {
 
     #[test]
     fn returns_error_when_file_does_not_exist() {
-        let path = std::env::temp_dir()
-            .join(format!("rust_quant_missing_{}.csv", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("rust_quant_missing_{}.csv", std::process::id()));
 
         let result = load_data(&path.to_string_lossy());
         assert!(matches!(result, Err(DataLoadError::Csv { .. })));
@@ -275,8 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_files_and_empty_path_list_produce_empty_dataset()
-    -> Result<(), Box<dyn Error>> {
+    fn empty_files_and_empty_path_list_produce_empty_dataset() -> Result<(), Box<dyn Error>> {
         let path = write_test_csv("symbol,date,open,high,low,close,volume\n")?;
 
         let data = load_multi_asset_data(&[path_string(&path)])?;
@@ -291,8 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_symbol_and_date_returns_merge_conflict()
-    -> Result<(), Box<dyn Error>> {
+    fn duplicate_symbol_and_date_returns_merge_conflict() -> Result<(), Box<dyn Error>> {
         let first = write_test_csv(concat!(
             "symbol,date,open,high,low,close,volume\n",
             "AAA,2025-01-02,10,11,9,10,1000\n",

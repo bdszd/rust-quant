@@ -1,8 +1,8 @@
 use crate::{
-    backtest::execute_job,
-    broker::{BACKTEST_QUEUE, connect_channel},
-    metrics::Metrics,
-    storage,
+    infrastructure::database::backtest_repository as storage,
+    infrastructure::messaging::rabbitmq::{BACKTEST_QUEUE, connect_channel},
+    modules::backtest::service::execute_job,
+    observability::metrics::Metrics,
     tasks::{ApiBacktestResult, BacktestJob},
 };
 use futures_util::StreamExt;

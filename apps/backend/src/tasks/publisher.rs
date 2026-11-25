@@ -1,7 +1,7 @@
 use crate::{
-    broker::{BACKTEST_QUEUE, connect_channel},
-    metrics::Metrics,
-    storage,
+    infrastructure::database::backtest_repository as storage,
+    infrastructure::messaging::rabbitmq::{BACKTEST_QUEUE, connect_channel},
+    observability::metrics::Metrics,
 };
 use lapin::{
     BasicProperties,

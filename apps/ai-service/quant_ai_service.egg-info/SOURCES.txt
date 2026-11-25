@@ -1,0 +1,7 @@
+pyproject.toml
+app/main.py
+quant_ai_service.egg-info/PKG-INFO
+quant_ai_service.egg-info/SOURCES.txt
+quant_ai_service.egg-info/dependency_links.txt
+quant_ai_service.egg-info/requires.txt
+quant_ai_service.egg-info/top_level.txt

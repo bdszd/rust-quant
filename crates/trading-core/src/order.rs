@@ -19,12 +19,7 @@ pub struct Order {
 }
 
 impl Order {
-    pub fn market(
-        id: u64,
-        symbol: impl Into<String>,
-        side: Side,
-        quantity: u64,
-    ) -> Self {
+    pub fn market(id: u64, symbol: impl Into<String>, side: Side, quantity: u64) -> Self {
         Self {
             id,
             symbol: symbol.into(),

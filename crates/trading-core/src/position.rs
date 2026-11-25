@@ -28,7 +28,6 @@ impl Position {
     }
 
     pub fn unrealized_pnl(&self) -> f64 {
-        (self.last_price.unwrap_or(self.average_cost) - self.average_cost)
-            * self.quantity as f64
+        (self.last_price.unwrap_or(self.average_cost) - self.average_cost) * self.quantity as f64
     }
 }
