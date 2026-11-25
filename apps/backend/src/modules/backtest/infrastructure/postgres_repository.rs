@@ -4,7 +4,10 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::modules::backtest::{
-    application::{ports::BacktestRepository, queries::BacktestTaskView},
+    application::{
+        ports::{BacktestRepository, OutboxRepository, PendingOutboxEvent},
+        queries::BacktestTaskView,
+    },
     domain::{BacktestJob, BacktestTask, StrategyConfig, TaskStatus},
 };
 
@@ -196,4 +199,121 @@ fn map_task_view(row: sqlx::postgres::PgRow) -> Result<BacktestTaskView, String>
         error,
         execution_duration_ms,
     })
+}
+
+
+#[async_trait]
+impl OutboxRepository for PgBacktestRepository {
+    async fn claim_pending(
+        &self,
+        publisher_id: &str,
+        limit: i64,
+        lease_seconds: i64,
+    ) -> Result<Vec<PendingOutboxEvent>, String> {
+        let rows = sqlx::query(
+            r#"
+            WITH candidates AS (
+                SELECT id
+                FROM backtest_outbox
+                WHERE published_at IS NULL
+                  AND (locked_until IS NULL OR locked_until < NOW())
+                ORDER BY created_at
+                LIMIT $1
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE backtest_outbox AS outbox
+            SET locked_by = $2,
+                locked_until = NOW() + ($3 * INTERVAL '1 second'),
+                publish_attempts = publish_attempts + 1
+            FROM candidates
+            WHERE outbox.id = candidates.id
+            RETURNING
+                outbox.id,
+                outbox.task_id,
+                outbox.event_type,
+                outbox.payload::text AS payload_json
+            "#,
+        )
+        .bind(limit.clamp(1, 100))
+        .bind(publisher_id)
+        .bind(lease_seconds.clamp(1, 300))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| format!("领取待发布 Outbox 事件失败：{error}"))?;
+
+        rows.into_iter()
+            .map(|row| {
+                let id: Uuid = row.try_get("id")
+                    .map_err(|error| format!("读取 Outbox ID 失败：{error}"))?;
+                let task_id: Uuid = row.try_get("task_id")
+                    .map_err(|error| format!("读取 Outbox task_id 失败：{error}"))?;
+                let event_type: String = row.try_get("event_type")
+                    .map_err(|error| format!("读取 Outbox event_type 失败：{error}"))?;
+                let payload_json: String = row.try_get("payload_json")
+                    .map_err(|error| format!("读取 Outbox payload 失败：{error}"))?;
+                let payload = serde_json::from_str(&payload_json)
+                    .map_err(|error| format!("解析 Outbox payload 失败：{error}"))?;
+
+                Ok(PendingOutboxEvent {
+                    id,
+                    task_id,
+                    event_type,
+                    payload,
+                })
+            })
+            .collect()
+    }
+
+    async fn mark_published(
+        &self,
+        event_id: Uuid,
+        publisher_id: &str,
+    ) -> Result<bool, String> {
+        let result = sqlx::query(
+            r#"
+            UPDATE backtest_outbox
+            SET published_at = NOW(),
+                locked_by = NULL,
+                locked_until = NULL,
+                last_error = NULL
+            WHERE id = $1
+              AND locked_by = $2
+              AND published_at IS NULL
+            "#,
+        )
+        .bind(event_id)
+        .bind(publisher_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| format!("标记 Outbox 事件已发布失败：{error}"))?;
+
+        Ok(result.rows_affected() == 1)
+    }
+
+    async fn release_after_failure(
+        &self,
+        event_id: Uuid,
+        publisher_id: &str,
+        error: &str,
+    ) -> Result<(), String> {
+        sqlx::query(
+            r#"
+            UPDATE backtest_outbox
+            SET locked_by = NULL,
+                locked_until = NULL,
+                last_error = $3
+            WHERE id = $1
+              AND locked_by = $2
+              AND published_at IS NULL
+            "#,
+        )
+        .bind(event_id)
+        .bind(publisher_id)
+        .bind(error)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| format!("释放 Outbox 事件领取锁失败：{error}"))?;
+
+        Ok(())
+    }
 }
