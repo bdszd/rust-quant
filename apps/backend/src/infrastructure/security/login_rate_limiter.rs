@@ -4,7 +4,6 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
 const WINDOW_MINUTES: i64 = 15;
-const MAX_ATTEMPTS: i32 = 10;
 static CLEANUP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// 基于 PostgreSQL 的登录频率限制器。
@@ -29,7 +28,7 @@ impl LoginRateLimiter {
         let identifier_key = digest_key("identifier", &identifier.trim().to_lowercase());
         let ip_key = digest_key("ip", &client_ip.to_string());
 
-        for key in [identifier_key, ip_key] {
+        for (key, max_attempts) in [(identifier_key, 10), (ip_key, 60)] {
             let (attempts, retry_after): (i32, i64) = sqlx::query_as(
                 r#"
                 INSERT INTO login_rate_limits (bucket_key, window_started_at, attempts)
@@ -63,7 +62,7 @@ impl LoginRateLimiter {
             .fetch_one(&self.pool)
             .await?;
 
-            if attempts > MAX_ATTEMPTS {
+            if attempts > max_attempts {
                 return Ok(Some(retry_after.max(1) as u64));
             }
         }
@@ -86,10 +85,10 @@ impl LoginRateLimiter {
         client_ip: IpAddr,
     ) -> Result<(), sqlx::Error> {
         let identifier_key = digest_key("identifier", &identifier.trim().to_lowercase());
-        let ip_key = digest_key("ip", &client_ip.to_string());
+        let _ = client_ip;
 
-        sqlx::query("DELETE FROM login_rate_limits WHERE bucket_key = ANY($1)")
-            .bind(vec![identifier_key, ip_key])
+        sqlx::query("DELETE FROM login_rate_limits WHERE bucket_key = $1")
+            .bind(identifier_key)
             .execute(&self.pool)
             .await?;
 
