@@ -15,7 +15,7 @@ pub fn normalize_date(value: &str) -> Result<String, String> {
     let d: u32 = compact[6..8]
         .parse()
         .map_err(|_| format!("日期错误：{value}"))?;
-    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let leap = y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400));
     let max = match m {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
@@ -37,9 +37,6 @@ pub fn normalize_date(value: &str) -> Result<String, String> {
 pub fn normalize_daily_bar(raw: RawDailyBar) -> Result<DailyBar, String> {
     let symbol = crate::domain::Symbol::new(raw.symbol)?;
     let trade_date = normalize_date(&raw.trade_date)?;
-    let _ = match raw.price_unit {
-        PriceUnit::Cny => (),
-    };
     let volume = match raw.volume_unit {
         VolumeUnit::Lots => raw.volume * Decimal::from(100),
         VolumeUnit::Shares => raw.volume,
