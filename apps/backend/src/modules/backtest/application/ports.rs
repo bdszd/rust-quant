@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::queries::BacktestTaskView;
+use super::{queries::BacktestTaskView, result::BacktestRunResult};
 use crate::modules::backtest::domain::{
     BacktestJob, BacktestTask, attempt::BacktestAttempt, job::BacktestJobConfig,
 };
@@ -102,4 +102,14 @@ pub trait BacktestExecutionRepository: Send + Sync {
         message: &str,
         duration_ms: Option<i64>,
     ) -> Result<(), String>;
+}
+
+
+/// 回测执行能力。Worker 只调用这个接口，不关心具体回测引擎、文件目录或指标实现。
+pub trait BacktestExecutor: Send + Sync {
+    fn execute(
+        &self,
+        task_id: Uuid,
+        config: BacktestJobConfig,
+    ) -> Result<BacktestRunResult, String>;
 }
