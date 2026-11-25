@@ -442,7 +442,7 @@ async fn persist_success(
 }
 
 async fn persist_failure(
-    repository: &PgBacktestRepository,
+    repository: &BacktestExecutionService,
     attempt_id: Uuid,
     task_id: Uuid,
     worker_id: &str,
