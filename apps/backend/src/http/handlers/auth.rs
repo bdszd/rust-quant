@@ -84,12 +84,9 @@ pub async fn login(
         .login(&payload.identifier, &payload.password)
         .await
         .map_err(|error| match error {
-            AuthenticationError::Login(LoginError::InvalidCredentials) => {
-                api_error(StatusCode::UNAUTHORIZED, "用户名或密码错误")
-            }
-            AuthenticationError::Login(LoginError::AccountNotActive) => {
-                api_error(StatusCode::FORBIDDEN, "账号尚未激活或当前不可用")
-            }
+            AuthenticationError::Login(
+                LoginError::InvalidCredentials | LoginError::AccountNotActive,
+            ) => api_error(StatusCode::UNAUTHORIZED, "用户名或密码错误"),
             _ => api_error(StatusCode::INTERNAL_SERVER_ERROR, "登录服务暂时不可用"),
         })?;
 
