@@ -1,8 +1,7 @@
 use crate::{
     infrastructure::messaging::rabbitmq::{BACKTEST_QUEUE, connect_channel},
     modules::backtest::{
-        application::{execution::BacktestExecutionService, ports::ClaimExecutionOutcome},
-        service::execute_config,
+        application::{execution::BacktestExecutionService, ports::{BacktestExecutor, ClaimExecutionOutcome}},
     },
     observability::metrics::Metrics,
 };
@@ -18,7 +17,6 @@ use lapin::{
 use serde::Deserialize;
 use std::{
     cmp,
-    path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -64,7 +62,7 @@ fn duration_to_ms(duration: Duration) -> i64 {
 pub async fn worker_loop(
     worker_id: usize,
     repository: Arc<BacktestExecutionService>,
-    data_dir: PathBuf,
+    executor: Arc<dyn BacktestExecutor>,
     amqp_addr: String,
     mut shutdown: watch::Receiver<bool>,
     metrics: Arc<Metrics>,
@@ -137,7 +135,7 @@ pub async fn worker_loop(
                         Some(Ok(delivery)) => {
                             if !process_delivery(
                                 &repository,
-                                &data_dir,
+                                &executor,
                                 delivery,
                                 worker_id,
                                 metrics.clone(),
@@ -173,7 +171,7 @@ pub async fn worker_loop(
 
 async fn process_delivery(
     repository: &Arc<BacktestExecutionService>,
-    data_dir: &Path,
+    executor: &Arc<dyn BacktestExecutor>,
     delivery: Delivery,
     worker_number: usize,
     metrics: Arc<Metrics>,
@@ -312,12 +310,11 @@ async fn process_delivery(
     let task_id = claimed.task_id;
     let attempt_id = claimed.attempt.id;
     let config = claimed.config;
-    let execution_data_dir = data_dir.to_path_buf();
-    let execution_metrics = metrics.clone();
+    let execution_executor = executor.clone();
     let execution_started = Instant::now();
 
     let execution = tokio::task::spawn_blocking(move || {
-        execute_config(task_id, config, &execution_data_dir, execution_metrics)
+        execution_executor.execute(task_id, config)
     })
     .await;
 
