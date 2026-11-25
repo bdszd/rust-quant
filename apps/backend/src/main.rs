@@ -17,9 +17,12 @@ use modules::{
         application::{
             BacktestApplicationService,
             execution::BacktestExecutionService,
-            ports::{BacktestExecutionRepository, BacktestRepository, OutboxRepository},
+            ports::{BacktestExecutionRepository, BacktestExecutor, BacktestRepository, OutboxRepository},
         },
-        infrastructure::postgres_repository::PgBacktestRepository,
+        infrastructure::{
+            backtest_executor::BacktestCoreExecutor,
+            postgres_repository::PgBacktestRepository,
+        },
     },
     dataset::{
         application::DatasetApplicationService,
@@ -68,7 +71,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let worker_repository: Arc<dyn BacktestExecutionRepository> = backtest_repository.clone();
     let application_repository: Arc<dyn BacktestRepository> = backtest_repository.clone();
     let worker_execution_service = Arc::new(BacktestExecutionService::new(worker_repository));
-    let worker_data_dir = data_dir.clone();
 
     // 4. 初始化回测应用服务及其技术实现。
     let dataset_catalog = Arc::new(FilesystemDatasetCatalog::new(data_dir.clone()));
@@ -80,6 +82,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 5. 初始化进程级性能统计。
     let metrics = Arc::new(Metrics::new(WORKER_COUNT));
+    let worker_executor: Arc<dyn BacktestExecutor> = Arc::new(BacktestCoreExecutor::new(
+        data_dir.clone(),
+        metrics.clone(),
+    ));
 
     // 6. 创建认证服务。
     // 认证服务和 Backend 使用同一个 PostgreSQL 连接池。
@@ -108,7 +114,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for worker_id in 0..WORKER_COUNT {
         let worker_execution_service = worker_execution_service.clone();
-        let worker_data_dir = worker_data_dir.clone();
         let worker_amqp_addr = amqp_addr.clone();
         let worker_shutdown = shutdown_rx.clone();
         let worker_metrics = metrics.clone();
@@ -117,7 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             worker_loop(
                 worker_id,
                 worker_execution_service,
-                worker_data_dir,
+                worker_executor.clone(),
                 worker_amqp_addr,
                 worker_shutdown,
                 worker_metrics,
