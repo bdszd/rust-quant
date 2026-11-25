@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::{
     app::{router::build_router, state::AppState},
-    infrastructure::database::postgres_pool as storage,
+    infrastructure::{database::postgres_pool as storage, security::login_rate_limiter::LoginRateLimiter},
     modules::{
         backtest::{
             application::{
@@ -99,6 +99,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(BacktestCoreExecutor::new(data_dir, metrics.clone()));
     let authentication = AuthenticationService::new(db.clone());
     let registration = RegistrationService::new(db.clone());
+    let login_rate_limiter = LoginRateLimiter::new(db.clone());
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
@@ -141,6 +142,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         datasets,
         authentication,
         registration,
+        login_rate_limiter,
     };
     let app = build_router(state);
 
@@ -149,7 +151,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         "Backend 实例 {instance_id} listening on http://0.0.0.0:8000，Worker 数量：{worker_count}"
     );
 
-    axum::serve(listener, app)
+    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
