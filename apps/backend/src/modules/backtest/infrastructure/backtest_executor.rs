@@ -4,8 +4,8 @@ use crate::modules::backtest::{
 };
 use crate::observability::metrics::Metrics;
 use backtest_core::{
-    BacktestConfig, Bar, BuyAndHoldStrategy, ExecutionMode as CoreExecutionMode,
-    SmaCrossStrategy, Strategy, load_data, run,
+    BacktestConfig, Bar, BuyAndHoldStrategy, ExecutionMode as CoreExecutionMode, SmaCrossStrategy,
+    Strategy, load_data, run,
 };
 use std::{
     path::{Path as FsPath, PathBuf},
