@@ -9,9 +9,9 @@ use crate::modules::backtest::{
         queries::BacktestTaskView,
     },
     domain::{
+        BacktestJob, BacktestTask, StrategyConfig, TaskStatus,
         attempt::{AttemptStatus, BacktestAttempt},
         result::BacktestResultRecord,
-        BacktestJob, BacktestTask, StrategyConfig, TaskStatus,
     },
 };
 
@@ -493,14 +493,12 @@ impl PgBacktestRepository {
         .await
         .map_err(|error| format!("创建执行 Attempt 失败：{error}"))?;
 
-        sqlx::query(
-            "UPDATE backtest_tasks SET status = $2, updated_at = NOW() WHERE id = $1",
-        )
-        .bind(task_id)
-        .bind(domain_task.status.as_str())
-        .execute(&mut *tx)
-        .await
-        .map_err(|error| format!("更新任务为 running 失败：{error}"))?;
+        sqlx::query("UPDATE backtest_tasks SET status = $2, updated_at = NOW() WHERE id = $1")
+            .bind(task_id)
+            .bind(domain_task.status.as_str())
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| format!("更新任务为 running 失败：{error}"))?;
 
         tx.commit()
             .await
