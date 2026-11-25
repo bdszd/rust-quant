@@ -116,7 +116,7 @@ pub async fn register(
         .register(&new_user, &payload.password)
         .await
         .map_err(|error| match error {
-            RegistrationError::InvalidInput(message) => api_error(StatusCode::BAD_REQUEST, message)
+            RegistrationError::InvalidInput(message) => api_error(StatusCode::BAD_REQUEST, message),
             RegistrationError::UsernameAlreadyExists => {
                 api_error(StatusCode::CONFLICT, "用户名已被使用")
             }
