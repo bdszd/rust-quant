@@ -34,8 +34,8 @@ const DEFAULT_WORKER_COUNT: usize = 2;
 
 /// 组装并启动 Backend 的 HTTP 服务、Publisher 和 Worker。
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let instance_id = env::var("RUST_QUANT_INSTANCE_ID")
-        .unwrap_or_else(|_| Uuid::new_v4().to_string());
+    let instance_id =
+        env::var("RUST_QUANT_INSTANCE_ID").unwrap_or_else(|_| Uuid::new_v4().to_string());
     if instance_id.trim().is_empty() {
         return Err("RUST_QUANT_INSTANCE_ID 不能为空".into());
     }
@@ -60,7 +60,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     let db = storage::connect(&database_url).await?;
     if migrate_only && !run_migrations {
-        return Err("RUST_QUANT_MIGRATE_ONLY=true 时不能同时设置 RUST_QUANT_RUN_MIGRATIONS=false".into());
+        return Err(
+            "RUST_QUANT_MIGRATE_ONLY=true 时不能同时设置 RUST_QUANT_RUN_MIGRATIONS=false".into(),
+        );
     }
 
     if run_migrations {
