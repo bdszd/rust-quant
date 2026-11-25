@@ -29,20 +29,22 @@ impl TaskStatus {
             Self::Failed => "failed",
         }
     }
+}
 
-    pub fn can_transition_to(self, next: Self) -> bool {
+impl BacktestTask {
+    pub fn can_transition_to(&self, next: TaskStatus) -> bool {
         matches!(
-            (self, next),
-            (Self::Queued, Self::Running)
-                | (Self::Running, Self::Queued)
-                | (Self::Running, Self::Succeeded)
-                | (Self::Running, Self::Failed)
-                | (Self::Failed, Self::Queued)
+            (self.status, next),
+            (TaskStatus::Queued, TaskStatus::Running)
+                | (TaskStatus::Running, TaskStatus::Queued)
+                | (TaskStatus::Running, TaskStatus::Succeeded)
+                | (TaskStatus::Running, TaskStatus::Failed)
+                | (TaskStatus::Failed, TaskStatus::Queued)
         )
     }
 
-    pub fn transition(&mut self, next: Self) -> Result<(), String> {
-        if !self.status.can_transition_to(next) {
+    pub fn transition(&mut self, next: TaskStatus) -> Result<(), String> {
+        if !self.can_transition_to(next) {
             return Err(format!(
                 "不允许任务状态从 {} 转换为 {}",
                 self.status.as_str(),
@@ -54,7 +56,6 @@ impl TaskStatus {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {
