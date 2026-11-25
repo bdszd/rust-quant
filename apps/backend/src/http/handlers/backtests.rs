@@ -1,5 +1,5 @@
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, State},
     http::StatusCode,
 };
@@ -11,6 +11,7 @@ use crate::{
     http::{
         dto::backtest::BacktestTaskResponse,
         error::{ApiError, api_error},
+        middleware::authentication::CurrentUser,
     },
     modules::backtest::{
         application::commands::CreateBacktestCommand,
@@ -66,6 +67,7 @@ pub struct RunBacktestRequest {
 /// Handler 只负责 HTTP 参数解析、转换应用层命令和组织 HTTP 响应。
 pub async fn create_backtest(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Json(request): Json<RunBacktestRequest>,
 ) -> Result<(StatusCode, Json<BacktestTaskResponse>), (StatusCode, Json<ApiError>)> {
     let request_started = std::time::Instant::now();
@@ -124,8 +126,7 @@ pub async fn create_backtest(
     let task = state
         .backtest
         .create_task(CreateBacktestCommand {
-            // 当前认证中间件已验证身份，但本轮暂不扩展 owner 隔离。
-            user_id: None,
+            user_id: Some(current_user.user_id),
             config,
         })
         .await
