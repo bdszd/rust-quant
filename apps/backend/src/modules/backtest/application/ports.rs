@@ -14,7 +14,11 @@ use crate::modules::backtest::domain::{
 pub trait BacktestRepository: Send + Sync {
     async fn create_task(&self, task: &BacktestTask, job: &BacktestJob) -> Result<(), String>;
 
-    async fn find_task(&self, task_id: Uuid, user_id: Uuid) -> Result<Option<BacktestTaskView>, String>;
+    async fn find_task(
+        &self,
+        task_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<BacktestTaskView>, String>;
 
     async fn list_tasks(&self, user_id: Uuid, limit: i64) -> Result<Vec<BacktestTaskView>, String>;
 }
