@@ -4,6 +4,7 @@ use crate::{
         dataset::application::DatasetApplicationService,
     },
     observability::metrics::Metrics,
+    infrastructure::security::login_rate_limiter::LoginRateLimiter,
 };
 use identity::auth::{AuthenticationService, RegistrationService};
 use sqlx::PgPool;
@@ -20,4 +21,5 @@ pub struct AppState {
     /// 负责登录、Token 验证和退出登录。
     pub authentication: AuthenticationService,
     pub registration: RegistrationService,
+    pub login_rate_limiter: LoginRateLimiter,
 }
