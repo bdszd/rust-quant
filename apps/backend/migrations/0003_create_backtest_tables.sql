@@ -4,11 +4,20 @@
 DO $
 BEGIN
     IF to_regclass('public.backtest_tasks') IS NOT NULL
-       AND NOT EXISTS (
-           SELECT 1 FROM information_schema.columns
-           WHERE table_schema = 'public'
-             AND table_name = 'backtest_tasks'
-             AND column_name = 'user_id'
+       AND (
+           NOT EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public'
+                 AND table_name = 'backtest_tasks'
+                 AND column_name = 'user_id'
+           )
+           OR NOT EXISTS (
+               SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'public'
+                 AND table_name = 'backtest_tasks'
+                 AND column_name = 'id'
+                 AND udt_name = 'uuid'
+           )
        ) THEN
         IF to_regclass('public.backtest_tasks_legacy_v1') IS NOT NULL THEN
             RAISE EXCEPTION 'backtest_tasks_legacy_v1 already exists; inspect legacy data before migration';
