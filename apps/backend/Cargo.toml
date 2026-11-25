@@ -3,6 +3,9 @@ name = "quant-backend"
 version = "0.1.0"
 edition = "2024"
 
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+
 [dependencies]
 async-trait = "0.1"
 axum = "0.8"
