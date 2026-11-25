@@ -4,7 +4,7 @@ use crate::modules::backtest::{
 };
 use crate::observability::metrics::Metrics;
 use backtest_core::{
-    BacktestConfig, Bar, BuyAndHoldStrategy, SmaCrossStrategy, Strategy, load_data, run,
+    BacktestConfig, Bar, BuyAndHoldStrategy, ExecutionMode as CoreExecutionMode, SmaCrossStrategy, Strategy, load_data, run,
 };
 use std::{
     path::{Path as FsPath, PathBuf},
@@ -78,7 +78,10 @@ pub fn execute_config(
         lot_size: config.lot_size,
         stamp_duty_rate: config.stamp_duty_rate,
         min_commission: config.min_commission,
-        execution_mode: config.execution_mode,
+        execution_mode: match config.execution_mode {
+            crate::modules::backtest::domain::ExecutionMode::NextOpen => CoreExecutionMode::NextOpen,
+            crate::modules::backtest::domain::ExecutionMode::NextClose => CoreExecutionMode::NextClose,
+        },
     };
 
     let engine_started = Instant::now();
