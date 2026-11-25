@@ -92,9 +92,16 @@ impl RegistrationService {
         let mut tx = self.pool.begin().await?;
 
         // 7. 在事务中创建用户。
-        let user = UserRepository::create_in_transaction(&mut tx, &normalized_user)
+        let mut user = UserRepository::create_in_transaction(&mut tx, &normalized_user)
             .await
             .map_err(Self::map_user_error)?;
+
+        // 当前版本尚未提供邮箱验证或管理员审核流程，因此注册成功后直接激活账号。
+        sqlx::query("UPDATE users SET status = 'active', updated_at = NOW() WHERE id = $1")
+            .bind(user.id)
+            .execute(&mut *tx)
+            .await?;
+        user.status = crate::user::UserStatus::Active;
 
         // 8. 在同一个事务中创建密码凭据。
         let credential = NewUserCredential {
