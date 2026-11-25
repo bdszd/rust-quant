@@ -16,7 +16,7 @@ use lapin::{
 use serde::Deserialize;
 use std::{
     cmp,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -171,7 +171,7 @@ pub async fn worker_loop(
 
 async fn process_delivery(
     repository: &Arc<PgBacktestRepository>,
-    data_dir: &PathBuf,
+    data_dir: &Path,
     delivery: Delivery,
     worker_number: usize,
     metrics: Arc<Metrics>,
