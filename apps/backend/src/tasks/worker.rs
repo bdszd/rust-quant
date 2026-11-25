@@ -1,7 +1,8 @@
 use crate::{
     infrastructure::messaging::rabbitmq::{BACKTEST_QUEUE, connect_channel},
-    modules::backtest::{
-        application::{execution::BacktestExecutionService, ports::{BacktestExecutor, ClaimExecutionOutcome}},
+    modules::backtest::application::{
+        execution::BacktestExecutionService,
+        ports::{BacktestExecutor, ClaimExecutionOutcome},
     },
     observability::metrics::Metrics,
 };
@@ -313,10 +314,8 @@ async fn process_delivery(
     let execution_executor = executor.clone();
     let execution_started = Instant::now();
 
-    let execution = tokio::task::spawn_blocking(move || {
-        execution_executor.execute(task_id, config)
-    })
-    .await;
+    let execution =
+        tokio::task::spawn_blocking(move || execution_executor.execute(task_id, config)).await;
 
     let execution_duration_ms = duration_to_ms(execution_started.elapsed());
     let task_succeeded = matches!(&execution, Ok(Ok(_)));
