@@ -1,10 +1,7 @@
 use lapin::{
-    Channel, Connection, ConnectionProperties,
-    options::{
-        ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
-    },
+    Channel, Connection, ConnectionProperties, ExchangeKind,
+    options::{ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions},
     types::{AMQPValue, FieldTable},
-    ExchangeKind,
 };
 
 /// 新版任务消息队列。使用独立队列名，避免与旧版完整 Job JSON 消息格式冲突。
