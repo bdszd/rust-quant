@@ -54,12 +54,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = storage::connect(&database_url).await?;
     sqlx::migrate!("./migrations").run(&db).await?;
 
-    // 3. 恢复上次进程遗留的 running 任务，并重新放回 Outbox。
-    let reset_count = storage::reset_running_tasks(&db).await?;
-    println!("已恢复 {reset_count} 个未完成任务");
+    // 3. 初始化回测 Repository。过期任务恢复将由带租约的 Worker 恢复流程负责，
+    // 不在每次进程启动时全局重置 running 状态，避免多实例互相干扰。
+    let backtest_repository = Arc::new(PgBacktestRepository::new(db.clone()));
+    let publisher_repository = backtest_repository.clone();
 
     // 4. 初始化回测应用服务及其技术实现。
-    let backtest_repository = Arc::new(PgBacktestRepository::new(db.clone()));
     let dataset_catalog = Arc::new(FilesystemDatasetCatalog::new(data_dir.clone()));
     let backtest = Arc::new(BacktestApplicationService::new(
         backtest_repository,
@@ -77,14 +77,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     // 8. 启动 Outbox Publisher。
-    let publisher_db = db.clone();
     let publisher_amqp_addr = amqp_addr.clone();
     let publisher_shutdown = shutdown_rx.clone();
     let publisher_metrics = metrics.clone();
 
     let publisher_handle = tokio::spawn(async move {
         publisher_loop(
-            publisher_db,
+            publisher_repository,
             publisher_amqp_addr,
             publisher_shutdown,
             publisher_metrics,
