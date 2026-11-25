@@ -8,10 +8,14 @@ use serde::Deserialize;
 
 use crate::{
     app::state::AppState,
-    http::error::{ApiError, api_error},
-    infrastructure::database::backtest_repository as storage,
-    modules::backtest::service::validate_dataset_name,
-    tasks::{BacktestJob, BacktestTask, TaskStatus, make_task_id},
+    http::{
+        dto::backtest::BacktestTaskResponse,
+        error::{ApiError, api_error},
+    },
+    modules::backtest::{
+        application::commands::CreateBacktestCommand,
+        domain::{BacktestJobConfig, StrategyConfig},
+    },
 };
 
 fn default_strategy() -> String {
@@ -57,60 +61,14 @@ pub struct RunBacktestRequest {
     long_window: Option<usize>,
 }
 
-// GET /api/datasets
-//
-// data/cleaned/<symbol>/<date-range>/
-//   ├── bars.csv
-//   ├── rejected.csv
-//   └── quality_report.json
-// POST /api/backtests
+/// POST /api/backtests
+///
+/// Handler 只负责 HTTP 参数解析、转换应用层命令和组织 HTTP 响应。
 pub async fn create_backtest(
     State(state): State<AppState>,
     Json(request): Json<RunBacktestRequest>,
-) -> Result<(StatusCode, Json<BacktestTask>), (StatusCode, Json<ApiError>)> {
+) -> Result<(StatusCode, Json<BacktestTaskResponse>), (StatusCode, Json<ApiError>)> {
     let request_started = std::time::Instant::now();
-
-    validate_dataset_name(&request.dataset)
-        .map_err(|message| api_error(StatusCode::BAD_REQUEST, message))?;
-
-    if !request.initial_cash.is_finite() || request.initial_cash <= 0.0 {
-        return Err(api_error(
-            StatusCode::BAD_REQUEST,
-            "初始资金必须是有限的正数",
-        ));
-    }
-
-    if !request.commission_rate.is_finite() || !(0.0..1.0).contains(&request.commission_rate) {
-        return Err(api_error(
-            StatusCode::BAD_REQUEST,
-            "手续费率必须大于等于 0 且小于 1",
-        ));
-    }
-
-    if !request.slippage_rate.is_finite() || !(0.0..1.0).contains(&request.slippage_rate) {
-        return Err(api_error(
-            StatusCode::BAD_REQUEST,
-            "滑点率必须大于等于 0 且小于 1",
-        ));
-    }
-
-    if request.lot_size == 0 {
-        return Err(api_error(StatusCode::BAD_REQUEST, "每手股数必须大于 0"));
-    }
-
-    if !request.stamp_duty_rate.is_finite() || !(0.0..1.0).contains(&request.stamp_duty_rate) {
-        return Err(api_error(
-            StatusCode::BAD_REQUEST,
-            "印花税率必须大于等于 0 且小于 1",
-        ));
-    }
-
-    if !request.min_commission.is_finite() || request.min_commission < 0.0 {
-        return Err(api_error(
-            StatusCode::BAD_REQUEST,
-            "最低佣金必须是有限的非负数",
-        ));
-    }
 
     let execution_mode = match request.execution_mode.as_str() {
         "next_open" => ExecutionMode::NextOpen,
@@ -127,21 +85,16 @@ pub async fn create_backtest(
         "sma_cross" => {
             let short = request.short_window.unwrap_or(2);
             let long = request.long_window.unwrap_or(3);
-
-            if short == 0 {
-                return Err(api_error(StatusCode::BAD_REQUEST, "短期均线窗口必须大于 0"));
-            }
-
-            if long <= short {
-                return Err(api_error(
-                    StatusCode::BAD_REQUEST,
-                    "长期均线窗口必须大于短期均线窗口",
-                ));
-            }
-
-            ("sma_cross".to_string(), Some(short), Some(long))
+            (
+                StrategyConfig::SmaCross {
+                    short_window: short,
+                    long_window: long,
+                },
+                Some(short),
+                Some(long),
+            )
         }
-        "buy_and_hold" => ("buy_and_hold".to_string(), None, None),
+        "buy_and_hold" => (StrategyConfig::BuyAndHold, None, None),
         _ => {
             return Err(api_error(
                 StatusCode::BAD_REQUEST,
@@ -150,33 +103,14 @@ pub async fn create_backtest(
         }
     };
 
-    let dataset_dir = state.data_dir.join(&request.dataset);
-    if !dataset_dir.join("bars.csv").is_file() || !dataset_dir.join("quality_report.json").is_file()
-    {
-        return Err(api_error(
-            StatusCode::NOT_FOUND,
-            format!("找不到清洗后的数据集：{}", request.dataset),
-        ));
+    let strategy_name = match strategy {
+        StrategyConfig::SmaCross { .. } => "sma_cross",
+        StrategyConfig::BuyAndHold => "buy_and_hold",
     }
+    .to_string();
 
-    let id = make_task_id();
-
-    let task = BacktestTask {
-        id: id.clone(),
+    let config = BacktestJobConfig {
         dataset: request.dataset.clone(),
-        strategy: strategy.clone(),
-        short_window,
-        long_window,
-        status: TaskStatus::Queued,
-        result: None,
-        error: None,
-        execution_duration_ms: None,
-    };
-
-    let job = BacktestJob {
-        id,
-        dataset: request.dataset,
-        data_dir: state.data_dir.clone(),
         initial_cash: request.initial_cash,
         commission_rate: request.commission_rate,
         slippage_rate: request.slippage_rate,
@@ -185,61 +119,78 @@ pub async fn create_backtest(
         min_commission: request.min_commission,
         execution_mode,
         strategy,
-        short_window,
-        long_window,
     };
 
-    // 任务记录和 Outbox 消息在同一个 PostgreSQL 事务中提交。
-    let db_started = std::time::Instant::now();
-    storage::insert_task(&state.db, &task, &job, &state.metrics)
+    let task = state
+        .backtest
+        .create_task(CreateBacktestCommand {
+            // 当前认证中间件已验证身份，但本轮暂不扩展 owner 隔离。
+            user_id: None,
+            config,
+        })
         .await
         .map_err(|message| {
-            api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("无法保存回测任务：{message}"),
-            )
+            let status = if message.starts_with("找不到清洗后的数据集") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            api_error(status, message)
         })?;
 
-    state
-        .metrics
-        .record_duration("db_insert_task", db_started.elapsed());
+    state.metrics.increment_tasks_accepted();
     state
         .metrics
         .record_duration("api_create_backtest", request_started.elapsed());
-    state.metrics.increment_tasks_accepted();
 
-    Ok((StatusCode::ACCEPTED, Json(task)))
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(BacktestTaskResponse::queued(
+            &task,
+            request.dataset,
+            strategy_name,
+            short_window,
+            long_window,
+        )),
+    ))
 }
 
-// GET /api/backtests：最近 50 条回测任务。
+/// GET /api/backtests：最近 50 条回测任务。
 pub async fn list_backtests(
     State(state): State<AppState>,
-) -> Result<Json<Vec<BacktestTask>>, (StatusCode, Json<ApiError>)> {
-    let ids = storage::list_task_ids(&state.db, 50)
+) -> Result<Json<Vec<BacktestTaskResponse>>, (StatusCode, Json<ApiError>)> {
+    let tasks = state
+        .backtest
+        .list_tasks(50)
         .await
-        .map_err(|message| api_error(StatusCode::INTERNAL_SERVER_ERROR, message))?;
+        .map_err(|message| {
+            api_error(StatusCode::INTERNAL_SERVER_ERROR, message)
+        })?;
 
-    let mut tasks = Vec::with_capacity(ids.len());
-    for id in ids {
-        if let Some(task) = storage::get_task(&state.db, &id)
-            .await
-            .map_err(|message| api_error(StatusCode::INTERNAL_SERVER_ERROR, message))?
-        {
-            tasks.push(task);
-        }
-    }
-    Ok(Json(tasks))
+    Ok(Json(
+        tasks
+            .into_iter()
+            .map(BacktestTaskResponse::from_view)
+            .collect(),
+    ))
 }
 
-// GET /api/backtests/{id}
+/// GET /api/backtests/{id}
 pub async fn get_backtest(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<BacktestTask>, (StatusCode, Json<ApiError>)> {
-    let task = storage::get_task(&state.db, &id)
-        .await
-        .map_err(|message| api_error(StatusCode::INTERNAL_SERVER_ERROR, message))?;
+) -> Result<Json<BacktestTaskResponse>, (StatusCode, Json<ApiError>)> {
+    let task_id = BacktestTaskResponse::parse_id(&id)
+        .map_err(|_| api_error(StatusCode::BAD_REQUEST, "回测任务 ID 格式无效"))?;
 
-    task.map(Json)
+    let task = state
+        .backtest
+        .get_task(task_id)
+        .await
+        .map_err(|message| {
+            api_error(StatusCode::INTERNAL_SERVER_ERROR, message)
+        })?;
+
+    task.map(|view| Json(BacktestTaskResponse::from_view(view)))
         .ok_or_else(|| api_error(StatusCode::NOT_FOUND, format!("找不到回测任务：{id}")))
 }
