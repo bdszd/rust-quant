@@ -4,7 +4,7 @@ mod http;
 mod infrastructure;
 mod modules;
 mod observability;
-mod tasks;
+mod workers;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
