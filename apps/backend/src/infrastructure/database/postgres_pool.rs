@@ -1,4 +1,4 @@
-use std::{env, time::Duration};
+use std::{env, io, time::Duration};
 
 use sqlx::{PgPool, postgres::PgPoolOptions};
 
@@ -11,14 +11,24 @@ pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
         .ok()
         .map(|value| value.parse::<u32>())
         .transpose()
-        .map_err(|error| sqlx::Error::Configuration(
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("RUST_QUANT_DB_MAX_CONNECTIONS 必须是正整数：{error}")).into()
-        ))?
+        .map_err(|error| {
+            sqlx::Error::Configuration(
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("RUST_QUANT_DB_MAX_CONNECTIONS 必须是正整数：{error}"),
+                )
+                .into(),
+            )
+        })?
         .unwrap_or(10);
 
     if max_connections == 0 {
         return Err(sqlx::Error::Configuration(
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, "RUST_QUANT_DB_MAX_CONNECTIONS 必须大于 0").into()
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "RUST_QUANT_DB_MAX_CONNECTIONS 必须大于 0",
+            )
+            .into(),
         ));
     }
 
