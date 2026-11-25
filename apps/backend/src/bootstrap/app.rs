@@ -42,6 +42,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let worker_count = parse_usize_env("RUST_QUANT_WORKER_COUNT", DEFAULT_WORKER_COUNT)?;
     let run_migrations = parse_bool_env("RUST_QUANT_RUN_MIGRATIONS", true)?;
+    let migrate_only = parse_bool_env("RUST_QUANT_MIGRATE_ONLY", false)?;
 
     let data_dir = env::var_os("RUST_QUANT_DATA_DIR")
         .map(PathBuf::from)
@@ -57,17 +58,26 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = env::var("DATABASE_URL").expect(
         "必须设置 DATABASE_URL，例如 postgres://postgres:postgres@localhost:5433/rust_quant",
     );
-    let amqp_addr = env::var("AMQP_ADDR")
-        .expect("必须设置 AMQP_ADDR，例如 amqp://rust_quant:rust_quant_dev@localhost:5673/%2f");
-
     let db = storage::connect(&database_url).await?;
+    if migrate_only && !run_migrations {
+        return Err("RUST_QUANT_MIGRATE_ONLY=true 时不能同时设置 RUST_QUANT_RUN_MIGRATIONS=false".into());
+    }
+
     if run_migrations {
-        // 本地开发默认自动迁移。多实例部署时应先由独立部署步骤执行迁移，
-        // 再将每个 Backend 实例的 RUST_QUANT_RUN_MIGRATIONS=false。
+        // 本地开发默认自动迁移。部署时可使用 RUST_QUANT_MIGRATE_ONLY=true
+        // 单独执行迁移，再让所有服务实例设置 RUST_QUANT_RUN_MIGRATIONS=false。
         sqlx::migrate!("./migrations").run(&db).await?;
     } else {
         println!("实例 {instance_id} 跳过启动时数据库迁移");
     }
+
+    if migrate_only {
+        println!("数据库迁移已完成，按 RUST_QUANT_MIGRATE_ONLY 配置退出");
+        return Ok(());
+    }
+
+    let amqp_addr = env::var("AMQP_ADDR")
+        .expect("必须设置 AMQP_ADDR，例如 amqp://rust_quant:rust_quant_dev@localhost:5673/%2f");
 
     let repository = Arc::new(PgBacktestRepository::new(db.clone()));
     let publisher_repository: Arc<dyn OutboxRepository> = repository.clone();
