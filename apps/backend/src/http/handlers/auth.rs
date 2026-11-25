@@ -1,11 +1,16 @@
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{Json, extract::State, http::StatusCode, Extension};
+use identity::{
+    auth::{AuthenticationError, LoginError, RegistrationError},
+    user::{NewUser, User, UserRepository, UserStatus},
+};
 use serde::{Deserialize, Serialize};
-
-use identity::auth::{AuthenticationError, LoginError};
 
 use crate::{
     app::state::AppState,
-    http::error::{ApiError, api_error},
+    http::{
+        error::{ApiError, api_error},
+        middleware::authentication::CurrentUser,
+    },
 };
 
 /// 用户提交的登录信息。
@@ -13,8 +18,15 @@ use crate::{
 pub struct LoginRequest {
     /// 用户名或邮箱。
     pub identifier: String,
-
     /// 用户密码。
+    pub password: String,
+}
+
+/// 用户注册信息。
+#[derive(Debug, Deserialize)]
+pub struct RegisterRequest {
+    pub username: String,
+    pub email: String,
     pub password: String,
 }
 
@@ -27,39 +39,136 @@ pub struct LoginResponse {
     pub expires_at: String,
 }
 
+/// 对外公开的用户基本信息，不包含密码凭据或 Token。
+#[derive(Debug, Serialize)]
+pub struct UserResponse {
+    pub id: uuid::Uuid,
+    pub username: String,
+    pub email: String,
+    pub status: &'static str,
+}
+
+impl From<User> for UserResponse {
+    fn from(user: User) -> Self {
+        let status = match user.status {
+            UserStatus::Pending => "pending",
+            UserStatus::Active => "active",
+            UserStatus::Disabled => "disabled",
+        };
+        Self {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            status,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct LogoutResponse {
+    pub revoked: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LogoutAllResponse {
+    pub revoked_sessions: u64,
+}
+
 /// 用户登录接口。
 pub async fn login(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, Json<ApiError>)> {
-    // 1. 调用 Identity 模块验证账号密码并创建 Session。
     let issued_session = state
         .authentication
         .login(&payload.identifier, &payload.password)
         .await
         .map_err(|error| match error {
-            // 账号不存在或密码错误。
             AuthenticationError::Login(LoginError::InvalidCredentials) => {
                 api_error(StatusCode::UNAUTHORIZED, "用户名或密码错误")
             }
-
-            // 账号还没有激活，或者当前不可用。
             AuthenticationError::Login(LoginError::AccountNotActive) => {
                 api_error(StatusCode::FORBIDDEN, "账号尚未激活或当前不可用")
             }
-
-            // 其他错误属于服务器内部问题。
             _ => api_error(StatusCode::INTERNAL_SERVER_ERROR, "登录服务暂时不可用"),
         })?;
 
-    // 2. 整理登录成功后的返回数据。
-    let response = LoginResponse {
+    Ok(Json(LoginResponse {
         user_id: issued_session.session.user_id,
         session_id: issued_session.session.id,
         token: issued_session.token,
         expires_at: issued_session.session.expires_at.to_rfc3339(),
+    }))
+}
+
+/// 用户注册接口。
+pub async fn register(
+    State(state): State<AppState>,
+    Json(payload): Json<RegisterRequest>,
+) -> Result<(StatusCode, Json<UserResponse>), (StatusCode, Json<ApiError>)> {
+    let new_user = NewUser {
+        username: payload.username,
+        email: payload.email,
     };
 
-    // 3. 返回 JSON。
-    Ok(Json(response))
+    let user = state
+        .registration
+        .register(&new_user, &payload.password)
+        .await
+        .map_err(|error| match error {
+            RegistrationError::InvalidInput(message) => {
+                api_error(StatusCode::BAD_REQUEST, message)
+            }
+            RegistrationError::UsernameAlreadyExists => {
+                api_error(StatusCode::CONFLICT, "用户名已被使用")
+            }
+            RegistrationError::EmailAlreadyExists => {
+                api_error(StatusCode::CONFLICT, "邮箱已被使用")
+            }
+            _ => api_error(StatusCode::INTERNAL_SERVER_ERROR, "注册服务暂时不可用"),
+        })?;
+
+    Ok((StatusCode::CREATED, Json(UserResponse::from(user))))
+}
+
+/// 退出当前登录会话。
+pub async fn logout(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+) -> Result<Json<LogoutResponse>, (StatusCode, Json<ApiError>)> {
+    let revoked = state
+        .authentication
+        .logout(current_user.session_id, current_user.user_id)
+        .await
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "退出登录失败"))?;
+
+    Ok(Json(LogoutResponse { revoked }))
+}
+
+/// 退出当前用户的所有登录会话。
+pub async fn logout_all(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+) -> Result<Json<LogoutAllResponse>, (StatusCode, Json<ApiError>)> {
+    let revoked_sessions = state
+        .authentication
+        .logout_all(current_user.user_id)
+        .await
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "退出所有设备失败"))?;
+
+    Ok(Json(LogoutAllResponse { revoked_sessions }))
+}
+
+/// 获取当前登录用户的信息。
+pub async fn me(
+    State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
+) -> Result<Json<UserResponse>, (StatusCode, Json<ApiError>)> {
+    let user = UserRepository::new(state.db)
+        .find_by_id(current_user.user_id)
+        .await
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "读取用户信息失败"))?;
+
+    user.map(|user| Json(UserResponse::from(user)))
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "用户不存在"))
 }
