@@ -1,13 +1,15 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::modules::dataset::application::ports::DatasetCatalog;
+
 use crate::modules::backtest::domain::{
     BacktestJob, BacktestJobConfig, BacktestTask, StrategyConfig, TaskStatus,
 };
 
 use super::{
     commands::CreateBacktestCommand,
-    ports::{BacktestRepository, DatasetCatalog},
+    ports::BacktestRepository,
     queries::BacktestTaskView,
 };
 
