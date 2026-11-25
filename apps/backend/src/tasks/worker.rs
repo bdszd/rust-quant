@@ -1,6 +1,8 @@
 use crate::{
     infrastructure::messaging::rabbitmq::{BACKTEST_QUEUE, connect_channel},
-    modules::backtest::infrastructure::postgres_repository::PgBacktestRepository,
+    modules::backtest::infrastructure::postgres_repository::{
+        ClaimExecutionOutcome, PgBacktestRepository,
+    },
     modules::backtest::service::execute_config,
     observability::metrics::Metrics,
 };
@@ -193,7 +195,7 @@ async fn process_delivery(
     let worker_id = format!("worker-{worker_number}-{}", Uuid::new_v4());
     let claim_started = Instant::now();
 
-    let claimed = match repository
+    let claim_outcome = match repository
         .claim_execution(
             message.task_id,
             message.job_id,
@@ -202,7 +204,7 @@ async fn process_delivery(
         )
         .await
     {
-        Ok(claimed) => claimed,
+        Ok(outcome) => outcome,
         Err(error) => {
             eprintln!(
                 "认领任务 {}（事件 {}）失败：{error}，消息重新入队",
@@ -220,19 +222,33 @@ async fn process_delivery(
 
     metrics.record_duration("worker_claim", claim_started.elapsed());
 
-    let Some(claimed) = claimed else {
-        // 任务已结束，或另一个 Worker 持有未过期租约。重复消息可安全 ACK。
-        metrics.increment_tasks_duplicate();
-        return match delivery.ack(BasicAckOptions::default()).await {
-            Ok(()) => {
-                metrics.increment_ack_total();
-                true
-            }
-            Err(_) => {
-                metrics.increment_ack_failed();
-                false
-            }
-        };
+    let claimed = match claim_outcome {
+        ClaimExecutionOutcome::Claimed(claimed) => claimed,
+        ClaimExecutionOutcome::AlreadyFinished => {
+            metrics.increment_tasks_duplicate();
+            return match delivery.ack(BasicAckOptions::default()).await {
+                Ok(()) => {
+                    metrics.increment_ack_total();
+                    true
+                }
+                Err(_) => {
+                    metrics.increment_ack_failed();
+                    false
+                }
+            };
+        }
+        ClaimExecutionOutcome::LeaseHeld => {
+            // 当前任务仍由另一个 Worker 持有有效租约。保留 RabbitMQ 消息，
+            // 等待一段时间后重新入队，避免 ACK 掉唯一的恢复触发消息。
+            tokio::time::sleep(HEARTBEAT_INTERVAL).await;
+            return delivery
+                .nack(BasicNackOptions {
+                    requeue: true,
+                    ..BasicNackOptions::default()
+                })
+                .await
+                .is_ok();
+        }
     };
 
     println!(
