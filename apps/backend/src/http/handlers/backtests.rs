@@ -13,10 +13,7 @@ use crate::{
         middleware::authentication::CurrentUser,
     },
     modules::backtest::{
-        application::{
-            commands::CreateBacktestCommand,
-            error::BacktestApplicationError,
-        },
+        application::{commands::CreateBacktestCommand, error::BacktestApplicationError},
         domain::{BacktestJobConfig, ExecutionMode, StrategyConfig},
     },
 };

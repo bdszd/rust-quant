@@ -8,9 +8,7 @@ use crate::modules::backtest::domain::{
 };
 
 use super::{
-    commands::CreateBacktestCommand,
-    error::BacktestApplicationError,
-    ports::BacktestRepository,
+    commands::CreateBacktestCommand, error::BacktestApplicationError, ports::BacktestRepository,
     queries::BacktestTaskView,
 };
 
