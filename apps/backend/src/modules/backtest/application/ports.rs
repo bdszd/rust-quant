@@ -10,11 +10,7 @@ use crate::modules::backtest::domain::{BacktestJob, BacktestTask};
 /// PostgreSQL 是它的一种实现；应用层不依赖 SQLx。
 #[async_trait]
 pub trait BacktestRepository: Send + Sync {
-    async fn create_task(
-        &self,
-        task: &BacktestTask,
-        job: &BacktestJob,
-    ) -> Result<(), String>;
+    async fn create_task(&self, task: &BacktestTask, job: &BacktestJob) -> Result<(), String>;
 
     async fn find_task(&self, task_id: Uuid) -> Result<Option<BacktestTaskView>, String>;
 
@@ -42,11 +38,7 @@ pub trait OutboxRepository: Send + Sync {
         lease_seconds: i64,
     ) -> Result<Vec<PendingOutboxEvent>, String>;
 
-    async fn mark_published(
-        &self,
-        event_id: Uuid,
-        publisher_id: &str,
-    ) -> Result<bool, String>;
+    async fn mark_published(&self, event_id: Uuid, publisher_id: &str) -> Result<bool, String>;
 
     async fn release_after_failure(
         &self,
@@ -55,4 +47,3 @@ pub trait OutboxRepository: Send + Sync {
         error: &str,
     ) -> Result<(), String>;
 }
-

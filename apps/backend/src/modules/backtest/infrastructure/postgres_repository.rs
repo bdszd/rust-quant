@@ -23,11 +23,7 @@ impl PgBacktestRepository {
 
 #[async_trait]
 impl BacktestRepository for PgBacktestRepository {
-    async fn create_task(
-        &self,
-        task: &BacktestTask,
-        job: &BacktestJob,
-    ) -> Result<(), String> {
+    async fn create_task(&self, task: &BacktestTask, job: &BacktestJob) -> Result<(), String> {
         let config_json = serde_json::to_string(&job.config)
             .map_err(|error| format!("序列化回测配置失败：{error}"))?;
         let event_id = Uuid::new_v4();
@@ -39,7 +35,10 @@ impl BacktestRepository for PgBacktestRepository {
         let payload_json = serde_json::to_string(&payload)
             .map_err(|error| format!("序列化 Outbox 消息失败：{error}"))?;
 
-        let mut transaction = self.pool.begin().await
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
             .map_err(|error| format!("开启创建回测任务事务失败：{error}"))?;
 
         sqlx::query(
@@ -81,7 +80,9 @@ impl BacktestRepository for PgBacktestRepository {
         .await
         .map_err(|error| format!("保存回测 Outbox 事件失败：{error}"))?;
 
-        transaction.commit().await
+        transaction
+            .commit()
+            .await
             .map_err(|error| format!("提交创建回测任务事务失败：{error}"))?;
 
         Ok(())
@@ -152,22 +153,27 @@ impl BacktestRepository for PgBacktestRepository {
 }
 
 fn map_task_view(row: sqlx::postgres::PgRow) -> Result<BacktestTaskView, String> {
-    let id: Uuid = row.try_get("id")
+    let id: Uuid = row
+        .try_get("id")
         .map_err(|error| format!("读取任务 ID 失败：{error}"))?;
-    let status: String = row.try_get("status")
+    let status: String = row
+        .try_get("status")
         .map_err(|error| format!("读取任务状态失败：{error}"))?;
-    let config_json: String = row.try_get("config_json")
+    let config_json: String = row
+        .try_get("config_json")
         .map_err(|error| format!("读取任务配置失败：{error}"))?;
-    let result_json: Option<String> = row.try_get("result_json")
+    let result_json: Option<String> = row
+        .try_get("result_json")
         .map_err(|error| format!("读取回测结果失败：{error}"))?;
-    let error: Option<String> = row.try_get("error")
+    let error: Option<String> = row
+        .try_get("error")
         .map_err(|error| format!("读取任务错误信息失败：{error}"))?;
-    let execution_duration_ms: Option<i64> = row.try_get("execution_duration_ms")
+    let execution_duration_ms: Option<i64> = row
+        .try_get("execution_duration_ms")
         .map_err(|error| format!("读取执行耗时失败：{error}"))?;
 
     let config: crate::modules::backtest::domain::BacktestJobConfig =
-        serde_json::from_str(&config_json)
-            .map_err(|error| format!("解析回测配置失败：{error}"))?;
+        serde_json::from_str(&config_json).map_err(|error| format!("解析回测配置失败：{error}"))?;
     let result: Option<Value> = result_json
         .map(|json| serde_json::from_str(&json))
         .transpose()
@@ -182,9 +188,14 @@ fn map_task_view(row: sqlx::postgres::PgRow) -> Result<BacktestTaskView, String>
     };
 
     let (strategy, short_window, long_window) = match config.strategy {
-        StrategyConfig::SmaCross { short_window, long_window } => {
-            ("sma_cross".to_string(), Some(short_window), Some(long_window))
-        }
+        StrategyConfig::SmaCross {
+            short_window,
+            long_window,
+        } => (
+            "sma_cross".to_string(),
+            Some(short_window),
+            Some(long_window),
+        ),
         StrategyConfig::BuyAndHold => ("buy_and_hold".to_string(), None, None),
     };
 
@@ -200,7 +211,6 @@ fn map_task_view(row: sqlx::postgres::PgRow) -> Result<BacktestTaskView, String>
         execution_duration_ms,
     })
 }
-
 
 #[async_trait]
 impl OutboxRepository for PgBacktestRepository {
@@ -243,13 +253,17 @@ impl OutboxRepository for PgBacktestRepository {
 
         rows.into_iter()
             .map(|row| {
-                let id: Uuid = row.try_get("id")
+                let id: Uuid = row
+                    .try_get("id")
                     .map_err(|error| format!("读取 Outbox ID 失败：{error}"))?;
-                let task_id: Uuid = row.try_get("task_id")
+                let task_id: Uuid = row
+                    .try_get("task_id")
                     .map_err(|error| format!("读取 Outbox task_id 失败：{error}"))?;
-                let event_type: String = row.try_get("event_type")
+                let event_type: String = row
+                    .try_get("event_type")
                     .map_err(|error| format!("读取 Outbox event_type 失败：{error}"))?;
-                let payload_json: String = row.try_get("payload_json")
+                let payload_json: String = row
+                    .try_get("payload_json")
                     .map_err(|error| format!("读取 Outbox payload 失败：{error}"))?;
                 let payload = serde_json::from_str(&payload_json)
                     .map_err(|error| format!("解析 Outbox payload 失败：{error}"))?;
@@ -264,11 +278,7 @@ impl OutboxRepository for PgBacktestRepository {
             .collect()
     }
 
-    async fn mark_published(
-        &self,
-        event_id: Uuid,
-        publisher_id: &str,
-    ) -> Result<bool, String> {
+    async fn mark_published(&self, event_id: Uuid, publisher_id: &str) -> Result<bool, String> {
         let result = sqlx::query(
             r#"
             UPDATE backtest_outbox
@@ -318,7 +328,6 @@ impl OutboxRepository for PgBacktestRepository {
     }
 }
 
-
 /// Worker 成功认领任务后获得的不可变执行配置。
 #[derive(Debug, Clone)]
 pub struct ClaimedBacktestJob {
@@ -339,27 +348,33 @@ impl PgBacktestRepository {
         worker_id: &str,
         lease_seconds: i64,
     ) -> Result<Option<ClaimedBacktestJob>, String> {
-        let mut tx = self.pool.begin().await
+        let mut tx = self
+            .pool
+            .begin()
+            .await
             .map_err(|error| format!("开启任务认领事务失败：{error}"))?;
 
-        let task = sqlx::query(
-            "SELECT status FROM backtest_tasks WHERE id = $1 FOR UPDATE"
-        )
-        .bind(task_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|error| format!("锁定回测任务失败：{error}"))?;
+        let task = sqlx::query("SELECT status FROM backtest_tasks WHERE id = $1 FOR UPDATE")
+            .bind(task_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|error| format!("锁定回测任务失败：{error}"))?;
 
         let Some(task) = task else {
-            tx.commit().await.map_err(|error| format!("提交空认领事务失败：{error}"))?;
+            tx.commit()
+                .await
+                .map_err(|error| format!("提交空认领事务失败：{error}"))?;
             return Ok(None);
         };
 
-        let status: String = task.try_get("status")
+        let status: String = task
+            .try_get("status")
             .map_err(|error| format!("读取任务状态失败：{error}"))?;
 
         if status == "succeeded" || status == "failed" {
-            tx.commit().await.map_err(|error| format!("提交重复任务事务失败：{error}"))?;
+            tx.commit()
+                .await
+                .map_err(|error| format!("提交重复任务事务失败：{error}"))?;
             return Ok(None);
         }
 
@@ -372,7 +387,7 @@ impl PgBacktestRepository {
                 ORDER BY attempt_number DESC
                 LIMIT 1
                 FOR UPDATE
-                "#
+                "#,
             )
             .bind(task_id)
             .fetch_optional(&mut *tx)
@@ -380,18 +395,24 @@ impl PgBacktestRepository {
             .map_err(|error| format!("检查旧执行租约失败：{error}"))?;
 
             let Some(active) = active else {
-                tx.commit().await.map_err(|error| format!("提交无活动执行记录事务失败：{error}"))?;
+                tx.commit()
+                    .await
+                    .map_err(|error| format!("提交无活动执行记录事务失败：{error}"))?;
                 return Ok(None);
             };
 
-            let expired: bool = active.try_get("expired")
+            let expired: bool = active
+                .try_get("expired")
                 .map_err(|error| format!("读取租约状态失败：{error}"))?;
             if !expired {
-                tx.commit().await.map_err(|error| format!("提交未过期租约事务失败：{error}"))?;
+                tx.commit()
+                    .await
+                    .map_err(|error| format!("提交未过期租约事务失败：{error}"))?;
                 return Ok(None);
             }
 
-            let old_attempt_id: Uuid = active.try_get("id")
+            let old_attempt_id: Uuid = active
+                .try_get("id")
                 .map_err(|error| format!("读取旧 Attempt ID 失败：{error}"))?;
             sqlx::query(
                 r#"
@@ -399,19 +420,21 @@ impl PgBacktestRepository {
                 SET status = 'interrupted', finished_at = NOW(),
                     error = 'worker lease expired'
                 WHERE id = $1 AND status = 'running'
-                "#
+                "#,
             )
             .bind(old_attempt_id)
             .execute(&mut *tx)
             .await
             .map_err(|error| format!("标记过期 Attempt 失败：{error}"))?;
         } else if status != "queued" {
-            tx.commit().await.map_err(|error| format!("提交未知状态事务失败：{error}"))?;
+            tx.commit()
+                .await
+                .map_err(|error| format!("提交未知状态事务失败：{error}"))?;
             return Ok(None);
         }
 
         let config_json: String = sqlx::query_scalar(
-            "SELECT config::text FROM backtest_jobs WHERE id = $1 AND task_id = $2"
+            "SELECT config::text FROM backtest_jobs WHERE id = $1 AND task_id = $2",
         )
         .bind(job_id)
         .bind(task_id)
@@ -437,7 +460,7 @@ impl PgBacktestRepository {
             INSERT INTO backtest_task_attempts
                 (id, task_id, attempt_number, status, worker_id, lease_expires_at)
             VALUES ($1, $2, $3, 'running', $4, NOW() + ($5 * INTERVAL '1 second'))
-            "#
+            "#,
         )
         .bind(attempt_id)
         .bind(task_id)
@@ -449,14 +472,16 @@ impl PgBacktestRepository {
         .map_err(|error| format!("创建执行 Attempt 失败：{error}"))?;
 
         sqlx::query(
-            "UPDATE backtest_tasks SET status = 'running', updated_at = NOW() WHERE id = $1"
+            "UPDATE backtest_tasks SET status = 'running', updated_at = NOW() WHERE id = $1",
         )
         .bind(task_id)
         .execute(&mut *tx)
         .await
         .map_err(|error| format!("更新任务为 running 失败：{error}"))?;
 
-        tx.commit().await.map_err(|error| format!("提交任务认领事务失败：{error}"))?;
+        tx.commit()
+            .await
+            .map_err(|error| format!("提交任务认领事务失败：{error}"))?;
 
         Ok(Some(ClaimedBacktestJob {
             task_id,
@@ -479,7 +504,7 @@ impl PgBacktestRepository {
             SET heartbeat_at = NOW(),
                 lease_expires_at = NOW() + ($3 * INTERVAL '1 second')
             WHERE id = $1 AND worker_id = $2 AND status = 'running'
-            "#
+            "#,
         )
         .bind(attempt_id)
         .bind(worker_id)
@@ -499,7 +524,10 @@ impl PgBacktestRepository {
         payload: &Value,
         duration_ms: i64,
     ) -> Result<(), String> {
-        let mut tx = self.pool.begin().await
+        let mut tx = self
+            .pool
+            .begin()
+            .await
             .map_err(|error| format!("开启成功结果事务失败：{error}"))?;
 
         let attempt = sqlx::query(
@@ -507,7 +535,7 @@ impl PgBacktestRepository {
             UPDATE backtest_task_attempts
             SET status = 'succeeded', finished_at = NOW(), duration_ms = $4
             WHERE id = $1 AND task_id = $2 AND worker_id = $3 AND status = 'running'
-            "#
+            "#,
         )
         .bind(attempt_id)
         .bind(task_id)
@@ -528,7 +556,7 @@ impl PgBacktestRepository {
             SET schema_version = EXCLUDED.schema_version,
                 payload = EXCLUDED.payload,
                 created_at = NOW()
-            "#
+            "#,
         )
         .bind(task_id)
         .bind(payload)
@@ -547,7 +575,9 @@ impl PgBacktestRepository {
             return Err("任务已不处于 running 状态，无法提交成功结果".to_string());
         }
 
-        tx.commit().await.map_err(|error| format!("提交成功结果事务失败：{error}"))
+        tx.commit()
+            .await
+            .map_err(|error| format!("提交成功结果事务失败：{error}"))
     }
 
     /// 一个事务内结束 Attempt 并记录 Task 失败状态。
@@ -559,7 +589,10 @@ impl PgBacktestRepository {
         message: &str,
         duration_ms: Option<i64>,
     ) -> Result<(), String> {
-        let mut tx = self.pool.begin().await
+        let mut tx = self
+            .pool
+            .begin()
+            .await
             .map_err(|error| format!("开启失败结果事务失败：{error}"))?;
 
         let attempt = sqlx::query(
@@ -567,7 +600,7 @@ impl PgBacktestRepository {
             UPDATE backtest_task_attempts
             SET status = 'failed', finished_at = NOW(), duration_ms = $4, error = $5
             WHERE id = $1 AND task_id = $2 AND worker_id = $3 AND status = 'running'
-            "#
+            "#,
         )
         .bind(attempt_id)
         .bind(task_id)
@@ -592,6 +625,8 @@ impl PgBacktestRepository {
             return Err("任务已不处于 running 状态，无法提交失败结果".to_string());
         }
 
-        tx.commit().await.map_err(|error| format!("提交失败结果事务失败：{error}"))
+        tx.commit()
+            .await
+            .map_err(|error| format!("提交失败结果事务失败：{error}"))
     }
 }

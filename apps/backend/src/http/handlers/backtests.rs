@@ -163,9 +163,7 @@ pub async fn list_backtests(
         .backtest
         .list_tasks(50)
         .await
-        .map_err(|message| {
-            api_error(StatusCode::INTERNAL_SERVER_ERROR, message)
-        })?;
+        .map_err(|message| api_error(StatusCode::INTERNAL_SERVER_ERROR, message))?;
 
     Ok(Json(
         tasks
@@ -187,9 +185,7 @@ pub async fn get_backtest(
         .backtest
         .get_task(task_id)
         .await
-        .map_err(|message| {
-            api_error(StatusCode::INTERNAL_SERVER_ERROR, message)
-        })?;
+        .map_err(|message| api_error(StatusCode::INTERNAL_SERVER_ERROR, message))?;
 
     task.map(|view| Json(BacktestTaskResponse::from_view(view)))
         .ok_or_else(|| api_error(StatusCode::NOT_FOUND, format!("找不到回测任务：{id}")))

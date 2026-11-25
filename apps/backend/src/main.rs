@@ -11,6 +11,7 @@ mod tasks;
 use std::{env, path::PathBuf, sync::Arc};
 
 use app::router::build_router;
+use identity::auth::AuthenticationService;
 use modules::{
     backtest::{
         application::BacktestApplicationService,
@@ -21,7 +22,6 @@ use modules::{
         infrastructure::filesystem_catalog::FilesystemDatasetCatalog,
     },
 };
-use identity::auth::AuthenticationService;
 use tokio::sync::watch;
 
 use app::state::AppState;

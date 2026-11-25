@@ -1,10 +1,6 @@
-use std::{path::PathBuf, fs};
+use std::{fs, path::PathBuf};
 
-use crate::{
-    modules::{
-        dataset::application::{ports::DatasetCatalog, query::DatasetSummary},
-    },
-};
+use crate::modules::dataset::application::{ports::DatasetCatalog, query::DatasetSummary};
 
 use serde::Deserialize;
 
@@ -39,10 +35,7 @@ impl FilesystemDatasetCatalog {
                 && !value.contains(':')
         };
 
-        if parts.next().is_some()
-            || !valid_component(symbol)
-            || !valid_component(date_range)
-        {
+        if parts.next().is_some() || !valid_component(symbol) || !valid_component(date_range) {
             return Err("dataset 必须使用有效的 股票代码/日期范围 格式".to_string());
         }
 
@@ -53,18 +46,17 @@ impl FilesystemDatasetCatalog {
 impl DatasetCatalog for FilesystemDatasetCatalog {
     fn exists(&self, dataset: &str) -> Result<bool, String> {
         let directory = self.dataset_dir(dataset)?;
-        Ok(directory.join("bars.csv").is_file()
-            && directory.join("quality_report.json").is_file())
+        Ok(directory.join("bars.csv").is_file() && directory.join("quality_report.json").is_file())
     }
 
     fn list(&self) -> Result<Vec<DatasetSummary>, String> {
-        let symbols = fs::read_dir(&self.root)
-            .map_err(|error| format!("无法读取清洗数据目录：{error}"))?;
+        let symbols =
+            fs::read_dir(&self.root).map_err(|error| format!("无法读取清洗数据目录：{error}"))?;
         let mut datasets = Vec::new();
 
         for symbol_entry in symbols {
-            let symbol_entry = symbol_entry
-                .map_err(|error| format!("读取股票代码目录失败：{error}"))?;
+            let symbol_entry =
+                symbol_entry.map_err(|error| format!("读取股票代码目录失败：{error}"))?;
             let symbol_path = symbol_entry.path();
             if !symbol_path.is_dir() {
                 continue;
@@ -77,8 +69,8 @@ impl DatasetCatalog for FilesystemDatasetCatalog {
             let date_ranges = fs::read_dir(&symbol_path)
                 .map_err(|error| format!("读取 {symbol} 的日期目录失败：{error}"))?;
             for date_entry in date_ranges {
-                let date_entry = date_entry
-                    .map_err(|error| format!("读取日期目录失败：{error}"))?;
+                let date_entry =
+                    date_entry.map_err(|error| format!("读取日期目录失败：{error}"))?;
                 let date_path = date_entry.path();
                 if !date_path.is_dir() {
                     continue;

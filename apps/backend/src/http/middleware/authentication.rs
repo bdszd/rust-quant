@@ -38,10 +38,7 @@ pub async fn require_auth(
 
     // 2. 没有携带 Token，直接拒绝请求。
     let Some(token) = token else {
-        return Err(api_error(
-            StatusCode::UNAUTHORIZED,
-            "请先登录",
-        ));
+        return Err(api_error(StatusCode::UNAUTHORIZED, "请先登录"));
     };
 
     // 3. 调用 Identity 模块，检查 Token 是否有效。
@@ -49,12 +46,7 @@ pub async fn require_auth(
         .authentication
         .validate_token(token)
         .await
-        .map_err(|_| {
-            api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "认证服务暂时不可用",
-            )
-        })?;
+        .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "认证服务暂时不可用"))?;
 
     // 4. Token 无效、已过期或者已经退出登录。
     let Some(session) = session else {

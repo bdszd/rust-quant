@@ -1,5 +1,5 @@
-use crate::observability::metrics::Metrics;
 use crate::modules::backtest::application::result::BacktestRunResult;
+use crate::observability::metrics::Metrics;
 use backtest_core::{
     BacktestConfig, Bar, BuyAndHoldStrategy, SmaCrossStrategy, Strategy, load_data, run,
 };
@@ -86,7 +86,11 @@ pub fn execute_config(
         StrategyConfig::SmaCross {
             short_window,
             long_window,
-        } => ("sma_cross".to_string(), Some(short_window), Some(long_window)),
+        } => (
+            "sma_cross".to_string(),
+            Some(short_window),
+            Some(long_window),
+        ),
         StrategyConfig::BuyAndHold => ("buy_and_hold".to_string(), None, None),
     };
 

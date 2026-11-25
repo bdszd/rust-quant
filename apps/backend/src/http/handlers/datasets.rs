@@ -7,7 +7,10 @@ use crate::{
 
 pub async fn list_datasets(
     State(state): State<AppState>,
-) -> Result<Json<Vec<crate::modules::dataset::application::query::DatasetSummary>>, (StatusCode, Json<ApiError>)> {
+) -> Result<
+    Json<Vec<crate::modules::dataset::application::query::DatasetSummary>>,
+    (StatusCode, Json<ApiError>),
+> {
     let datasets = state
         .datasets
         .list_datasets()

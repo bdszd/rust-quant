@@ -1,8 +1,4 @@
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 
 use identity::auth::{AuthenticationError, LoginError};
@@ -53,10 +49,7 @@ pub async fn login(
             }
 
             // 其他错误属于服务器内部问题。
-            _ => api_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "登录服务暂时不可用",
-            ),
+            _ => api_error(StatusCode::INTERNAL_SERVER_ERROR, "登录服务暂时不可用"),
         })?;
 
     // 2. 整理登录成功后的返回数据。

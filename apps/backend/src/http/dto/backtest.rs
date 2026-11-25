@@ -22,7 +22,13 @@ pub struct BacktestTaskResponse {
 }
 
 impl BacktestTaskResponse {
-    pub fn queued(task: &BacktestTask, dataset: String, strategy: String, short_window: Option<usize>, long_window: Option<usize>) -> Self {
+    pub fn queued(
+        task: &BacktestTask,
+        dataset: String,
+        strategy: String,
+        short_window: Option<usize>,
+        long_window: Option<usize>,
+    ) -> Self {
         Self {
             id: task.id.to_string(),
             dataset,

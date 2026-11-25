@@ -8,9 +8,7 @@ use crate::modules::backtest::domain::{
 };
 
 use super::{
-    commands::CreateBacktestCommand,
-    ports::BacktestRepository,
-    queries::BacktestTaskView,
+    commands::CreateBacktestCommand, ports::BacktestRepository, queries::BacktestTaskView,
 };
 
 /// 组织回测任务用例。
@@ -23,10 +21,7 @@ pub struct BacktestApplicationService {
 }
 
 impl BacktestApplicationService {
-    pub fn new(
-        repository: Arc<dyn BacktestRepository>,
-        datasets: Arc<dyn DatasetCatalog>,
-    ) -> Self {
+    pub fn new(repository: Arc<dyn BacktestRepository>, datasets: Arc<dyn DatasetCatalog>) -> Self {
         Self {
             repository,
             datasets,
@@ -40,10 +35,7 @@ impl BacktestApplicationService {
         validate_config(&command.config)?;
 
         if !self.datasets.exists(&command.config.dataset)? {
-            return Err(format!(
-                "找不到清洗后的数据集：{}",
-                command.config.dataset
-            ));
+            return Err(format!("找不到清洗后的数据集：{}", command.config.dataset));
         }
 
         let task = BacktestTask {

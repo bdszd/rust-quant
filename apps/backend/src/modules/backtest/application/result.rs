@@ -126,8 +126,16 @@ impl BacktestRunResult {
             profit_factor: result.profit_factor,
             trade_count: result.trade_count,
             closed_trade_count: result.closed_trade_count,
-            trades: result.trades.iter().map(BacktestTradeResult::from).collect(),
-            history: result.history.iter().map(BacktestSnapshotResult::from).collect(),
+            trades: result
+                .trades
+                .iter()
+                .map(BacktestTradeResult::from)
+                .collect(),
+            history: result
+                .history
+                .iter()
+                .map(BacktestSnapshotResult::from)
+                .collect(),
         }
     }
 }
