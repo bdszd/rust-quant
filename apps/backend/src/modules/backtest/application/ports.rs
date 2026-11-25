@@ -3,10 +3,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::queries::BacktestTaskView;
-use crate::{
-    modules::backtest::domain::{BacktestJob, BacktestTask},
-    modules::dataset::application::DatasetSummary,
-};
+use crate::modules::backtest::domain::{BacktestJob, BacktestTask};
 
 /// 应用层需要的持久化能力。
 ///
@@ -59,11 +56,3 @@ pub trait OutboxRepository: Send + Sync {
     ) -> Result<(), String>;
 }
 
-/// 应用层需要的数据集目录能力。
-///
-/// 具体实现负责在文件系统中检查清洗后的数据集是否存在。
-pub trait DatasetCatalog: Send + Sync {
-    fn exists(&self, dataset: &str) -> Result<bool, String>;
-
-    fn list(&self) -> Result<Vec<DatasetSummary>, String>;
-}
