@@ -244,7 +244,6 @@ async fn duplicate_registration_returns_conflict(pool: PgPool) {
     fs::remove_dir_all(data_dir).unwrap();
 }
 
-
 #[sqlx::test(migrations = "./migrations")]
 async fn login_does_not_reveal_disabled_account_status(pool: PgPool) {
     let (app, data_dir) = test_app(pool.clone());
@@ -305,12 +304,12 @@ async fn login_does_not_reveal_disabled_account_status(pool: PgPool) {
     assert_eq!(disabled_response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(invalid_password_response.status(), StatusCode::UNAUTHORIZED);
 
-    let disabled_body =
-        to_bytes(disabled_response.into_body(), usize::MAX).await.unwrap();
-    let invalid_password_body =
-        to_bytes(invalid_password_response.into_body(), usize::MAX)
-            .await
-            .unwrap();
+    let disabled_body = to_bytes(disabled_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let invalid_password_body = to_bytes(invalid_password_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     assert_eq!(disabled_body, invalid_password_body);
 
     fs::remove_dir_all(data_dir).unwrap();
