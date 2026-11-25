@@ -4,6 +4,4 @@ pub mod queries;
 pub mod result;
 pub mod service;
 
-pub use commands::CreateBacktestCommand;
-pub use queries::BacktestTaskView;
 pub use service::BacktestApplicationService;
