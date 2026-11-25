@@ -94,7 +94,7 @@ The second instance uses a different `RUST_QUANT_INSTANCE_ID`. Both instances co
 
 These settings prepare the process and task execution layer for multiple instances. They do not yet make the cleaned CSV dataset directory shared: all instances must currently see equivalent dataset files at the configured path. Shared dataset storage and the full multi-instance data flow are intentionally deferred.
 
-## 7. Task delivery flow
+## 6. Task delivery flow
 
 1. Axum validates the request and dataset.
 2. PostgreSQL transaction inserts \`backtest_tasks\` and \`backtest_outbox\`.
@@ -110,12 +110,12 @@ Delivery is at-least-once, not exactly-once. A message can be delivered again if
 
 A task left in `running` is not reset during process startup. If its execution lease expires, a redelivered message can mark the old Attempt interrupted and create a new Attempt. The heartbeat prevents a healthy long-running execution from being taken over by another Worker.
 
-## 8. Migration ownership
+## 7. Migration ownership
 
 The Backend is the active SQLx migration owner for its identity, session, task, job, Attempt, result, and Outbox tables. Startup runs only the migrations under `apps/backend/migrations`.
 
 The SQL file under `crates/market-data/migrations` is currently not invoked by the Market Data crate. Do not add a second migrator using SQLx's default migration table. If Market Data persistence is activated later, its schema migration must be coordinated with the Backend migration owner or use an explicitly separate migration table/schema.
 
-## 9. Existing PostgreSQL data
+## 8. Existing PostgreSQL data
 
 The backtest migration creates the normalized task, job, Attempt, result, and Outbox tables. If it finds incompatible legacy `backtest_tasks`, `backtest_jobs`, or `backtest_outbox` tables, it renames them to `*_legacy_v1` and leaves their data intact; it does not attempt an automatic data conversion. It does not delete existing data or Docker volumes. No migration is run as part of this refactor work. Use the migration-only mode or the normal local-development startup to apply migrations explicitly.
