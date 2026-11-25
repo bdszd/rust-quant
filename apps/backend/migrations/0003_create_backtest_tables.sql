@@ -1,7 +1,7 @@
 -- Preserve legacy tables from the pre-normalized backend.
 -- The old schema used string task IDs and embedded job JSON. Keep those records
 -- under explicit legacy names instead of colliding with the new UUID schema.
-DO $
+DO $$
 BEGIN
     IF to_regclass('public.backtest_tasks') IS NOT NULL
        AND (
@@ -50,7 +50,8 @@ BEGIN
         END IF;
         ALTER TABLE public.backtest_jobs RENAME TO backtest_jobs_legacy_v1;
     END IF;
-END $;
+END;
+$$;
 
 -- Backtest persistence model.
 --
