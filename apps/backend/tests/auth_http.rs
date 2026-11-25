@@ -173,6 +173,60 @@ async fn auth_http_endpoints_complete_the_login_lifecycle(pool: PgPool) {
     .await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
+    // 重新登录两次，验证 HTTP 的 logout-all 会撤销该用户所有设备的会话。
+    let login_payload = serde_json::json!({
+        "identifier": "http_auth_user",
+        "password": "correct-horse-battery"
+    });
+    let response = send(
+        &app,
+        json_request("POST", "/api/auth/login", login_payload.clone()),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let second_token: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+            .unwrap();
+
+    let response = send(
+        &app,
+        json_request("POST", "/api/auth/login", login_payload),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let third_token: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+            .unwrap();
+
+    let response = send(
+        &app,
+        Request::builder()
+            .method("POST")
+            .uri("/api/auth/logout-all")
+            .header(
+                header::AUTHORIZATION,
+                format!("Bearer {}", second_token["token"].as_str().unwrap()),
+            )
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = send(
+        &app,
+        Request::builder()
+            .uri("/api/auth/me")
+            .header(
+                header::AUTHORIZATION,
+                format!("Bearer {}", third_token["token"].as_str().unwrap()),
+            )
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
     fs::remove_dir_all(data_dir).unwrap();
 }
 
