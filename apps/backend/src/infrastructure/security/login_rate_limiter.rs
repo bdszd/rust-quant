@@ -1,4 +1,7 @@
-use std::{net::IpAddr, sync::atomic::{AtomicU64, Ordering}};
+use std::{
+    net::IpAddr,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
