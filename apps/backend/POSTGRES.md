@@ -38,14 +38,14 @@ Optional data directory override:
 export RUST_QUANT_DATA_DIR="$PWD/data/cleaned"
 \`\`\`
 
-By default, the backend reads cleaned datasets from the repository's data/cleaned directory.
+By default, the backend reads cleaned datasets from `data/cleaned/tushare`. The directory can be overridden with `RUST_QUANT_DATA_DIR`.
 
 ## 3. Cleaned dataset layout
 
 Each dataset uses this layout:
 
 \`\`\`text
-data/cleaned/
+data/cleaned/tushare/
 └── 000001.SZ/
     └── 20240101_20241231/
         ├── bars.csv
@@ -69,14 +69,22 @@ SQLx applies pending migrations at startup.
 2. PostgreSQL transaction inserts \`backtest_tasks\` and \`backtest_outbox\`.
 3. Outbox Publisher publishes the payload to the durable RabbitMQ queue.
 4. Publisher Confirm allows the Outbox row to be marked published.
-5. Worker consumes the message and atomically changes the task from queued to running.
-6. Worker executes Backtest Core and persists succeeded/failed state.
-7. Worker ACKs the RabbitMQ delivery only after the final state is persisted.
+5. Worker consumes the message and atomically claims the task and creates an execution Attempt.
+6. Worker periodically renews the Attempt lease while Backtest Core is running.
+7. The executor loads the cleaned CSV dataset, validates its bars, and runs the selected strategy.
+8. Worker persists the result (or failure), Attempt status, and Task status in a database transaction.
+9. Worker ACKs the RabbitMQ delivery only after the final state is persisted.
 
 Delivery is at-least-once, not exactly-once. A message can be delivered again if the process fails after database persistence but before ACK. The task ID and conditional database claim make duplicate deliveries harmless.
 
-At startup, tasks left in running state are reset to queued and their Outbox events are made pending again. This is a single-backend-instance recovery strategy; multi-instance deployments need leases/heartbeats rather than resetting every running task.
+A task left in `running` is not reset during process startup. If its execution lease expires, a redelivered message can mark the old Attempt interrupted and create a new Attempt. The heartbeat prevents a healthy long-running execution from being taken over by another Worker.
 
-## 6. Existing PostgreSQL data
+## 6. Migration ownership
 
-The new migration creates the Outbox table without deleting existing task or result rows. Existing queued tasks are backfilled into the Outbox when the backend starts. Running tasks from the previous in-memory dispatcher are reset and re-enqueued.
+The Backend is the active SQLx migration owner for its identity, session, task, job, Attempt, result, and Outbox tables. Startup runs only the migrations under `apps/backend/migrations`.
+
+The SQL file under `crates/market-data/migrations` is currently not invoked by the Market Data crate. Do not add a second migrator using SQLx's default migration table. If Market Data persistence is activated later, its schema migration must be coordinated with the Backend migration owner or use an explicitly separate migration table/schema.
+
+## 7. Existing PostgreSQL data
+
+The backtest migration creates the normalized task, job, Attempt, result, and Outbox tables. It does not delete existing data or Docker volumes. No migration is run as part of this refactor work; migrations run only when the Backend application is started.
