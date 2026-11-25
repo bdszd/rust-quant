@@ -2,7 +2,6 @@ use crate::domain::{DailyBar, QueryRequest, Symbol};
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sqlx::{PgPool, Row};
-use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
