@@ -1,6 +1,6 @@
 -- Shared login attempt counters. Keys are SHA-256 digests; raw identifiers and IPs are never stored.
 CREATE TABLE login_rate_limits (
-    bucket_key CHAR(64) PRIMARY KEY,
+    bucket_key TEXT PRIMARY KEY CHECK (length(bucket_key) = 64),
     window_started_at TIMESTAMPTZ NOT NULL,
     attempts INTEGER NOT NULL CHECK (attempts > 0)
 );
