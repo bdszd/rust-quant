@@ -21,6 +21,7 @@ use quant_backend::{
         },
     },
     observability::metrics::Metrics,
+    infrastructure::security::login_rate_limiter::LoginRateLimiter,
 };
 use sqlx::PgPool;
 use tower::ServiceExt;
@@ -45,7 +46,8 @@ fn test_app(pool: PgPool) -> (axum::Router, std::path::PathBuf) {
         backtest,
         datasets,
         authentication: AuthenticationService::new(pool.clone()),
-        registration: RegistrationService::new(pool),
+        registration: RegistrationService::new(pool.clone()),
+        login_rate_limiter: LoginRateLimiter::new(pool),
     };
 
     (build_router(state), data_dir)
@@ -311,6 +313,101 @@ async fn login_does_not_reveal_disabled_account_status(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(disabled_body, invalid_password_body);
+
+    fs::remove_dir_all(data_dir).unwrap();
+}
+
+
+#[sqlx::test(migrations = "./migrations")]
+async fn login_is_rate_limited_after_ten_attempts(pool: PgPool) {
+    let (app, data_dir) = test_app(pool);
+
+    let registration = send(
+        &app,
+        json_request(
+            "POST",
+            "/api/auth/register",
+            serde_json::json!({
+                "username": "rate_limited_user",
+                "email": "rate-limited@example.test",
+                "password": "correct-horse-battery"
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(registration.status(), StatusCode::CREATED);
+
+    for attempt in 1..=10 {
+        let response = send(
+            &app,
+            json_request(
+                "POST",
+                "/api/auth/login",
+                serde_json::json!({
+                    "identifier": "rate_limited_user",
+                    "password": "wrong-password"
+                }),
+            ),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "attempt {attempt} should still be allowed"
+        );
+    }
+
+    let response = send(
+        &app,
+        json_request(
+            "POST",
+            "/api/auth/login",
+            serde_json::json!({
+                "identifier": "rate_limited_user",
+                "password": "wrong-password"
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(response.headers().get(header::RETRY_AFTER).is_some());
+
+    fs::remove_dir_all(data_dir).unwrap();
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn cors_only_allows_configured_origins(pool: PgPool) {
+    let (app, data_dir) = test_app(pool);
+
+    let allowed = send(
+        &app,
+        Request::builder()
+            .method("OPTIONS")
+            .uri("/api/auth/login")
+            .header(header::ORIGIN, "http://localhost:5173")
+            .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+            .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "authorization,content-type")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(
+        allowed.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).unwrap(),
+        "http://localhost:5173"
+    );
+
+    let denied = send(
+        &app,
+        Request::builder()
+            .method("OPTIONS")
+            .uri("/api/auth/login")
+            .header(header::ORIGIN, "https://attacker.example")
+            .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert!(denied.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
 
     fs::remove_dir_all(data_dir).unwrap();
 }
