@@ -95,7 +95,11 @@ impl BacktestRepository for PgBacktestRepository {
         Ok(())
     }
 
-    async fn find_task(&self, task_id: Uuid, user_id: Uuid) -> Result<Option<BacktestTaskView>, String> {
+    async fn find_task(
+        &self,
+        task_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<BacktestTaskView>, String> {
         let row = sqlx::query(
             r#"
             SELECT
