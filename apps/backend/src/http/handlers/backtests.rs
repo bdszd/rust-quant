@@ -168,7 +168,7 @@ pub async fn list_backtests(
         .backtest
         .list_tasks(50)
         .await
-        .map_err(|message| api_error(StatusCode::INTERNAL_SERVER_ERROR, message))?;
+        .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
 
     Ok(Json(
         tasks
