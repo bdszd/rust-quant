@@ -20,6 +20,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct CurrentUser {
     pub user_id: Uuid,
+    pub session_id: Uuid,
 }
 
 /// 检查请求是否携带有效的登录 Token。
@@ -58,6 +59,7 @@ pub async fn require_auth(
     // 5. 把当前用户的身份信息放进请求中。
     let current_user = CurrentUser {
         user_id: session.user_id,
+        session_id: session.id,
     };
 
     request.extensions_mut().insert(current_user);
