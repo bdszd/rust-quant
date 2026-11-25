@@ -1,40 +1,3 @@
-use std::{path::PathBuf, sync::Arc};
-
-use uuid::Uuid;
-
-use crate::{
-    modules::backtest::{
-        application::{ports::BacktestExecutor, result::BacktestRunResult},
-        domain::BacktestJobConfig,
-    },
-    observability::metrics::Metrics,
-};
-
-/// Backtest Core 的执行适配器。
-///
-/// 负责把文件数据集、运行指标和回测引擎组合起来。
-/// Worker 只依赖 BacktestExecutor，不直接接触这些实现细节。
-pub struct BacktestCoreExecutor {
-    data_dir: PathBuf,
-    metrics: Arc<Metrics>,
-}
-
-impl BacktestCoreExecutor {
-    pub fn new(data_dir: PathBuf, metrics: Arc<Metrics>) -> Self {
-        Self { data_dir, metrics }
-    }
-}
-
-impl BacktestExecutor for BacktestCoreExecutor {
-    fn execute(
-        &self,
-        task_id: Uuid,
-        config: BacktestJobConfig,
-    ) -> Result<BacktestRunResult, String> {
-        execute_config(task_id, config, &self.data_dir, self.metrics.clone())
-    }
-}
-
 use crate::modules::backtest::{
     application::{ports::BacktestExecutor, result::BacktestRunResult},
     domain::{BacktestJobConfig, StrategyConfig},
@@ -43,7 +6,8 @@ use crate::observability::metrics::Metrics;
 use backtest_core::{
     BacktestConfig, Bar, BuyAndHoldStrategy, SmaCrossStrategy, Strategy, load_data, run,
 };
-use std::{path::Path as FsPath, sync::Arc, time::Instant};
+use std::{path::{Path as FsPath, PathBuf}, sync::Arc, time::Instant};
+use uuid::Uuid;
 
 pub fn validate_bars(bars: &[Bar]) -> Result<(), String> {
     if bars.is_empty() {
@@ -140,4 +104,30 @@ pub fn execute_config(
         long_window,
         &result,
     ))
+}
+
+
+/// Backtest Core 的执行适配器。
+///
+/// 负责把文件数据集、运行指标和回测引擎组合起来。
+/// Worker 只依赖 BacktestExecutor，不直接接触这些实现细节。
+pub struct BacktestCoreExecutor {
+    data_dir: PathBuf,
+    metrics: Arc<Metrics>,
+}
+
+impl BacktestCoreExecutor {
+    pub fn new(data_dir: PathBuf, metrics: Arc<Metrics>) -> Self {
+        Self { data_dir, metrics }
+    }
+}
+
+impl BacktestExecutor for BacktestCoreExecutor {
+    fn execute(
+        &self,
+        task_id: Uuid,
+        config: BacktestJobConfig,
+    ) -> Result<BacktestRunResult, String> {
+        execute_config(task_id, config, &self.data_dir, self.metrics.clone())
+    }
 }
