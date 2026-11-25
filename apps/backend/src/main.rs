@@ -58,6 +58,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 不在每次进程启动时全局重置 running 状态，避免多实例互相干扰。
     let backtest_repository = Arc::new(PgBacktestRepository::new(db.clone()));
     let publisher_repository = backtest_repository.clone();
+    let worker_repository = backtest_repository.clone();
+    let worker_data_dir = data_dir.clone();
 
     // 4. 初始化回测应用服务及其技术实现。
     let dataset_catalog = Arc::new(FilesystemDatasetCatalog::new(data_dir.clone()));
@@ -95,7 +97,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut worker_handles = Vec::with_capacity(WORKER_COUNT);
 
     for worker_id in 0..WORKER_COUNT {
-        let worker_db = db.clone();
+        let worker_repository = worker_repository.clone();
+        let worker_data_dir = worker_data_dir.clone();
         let worker_amqp_addr = amqp_addr.clone();
         let worker_shutdown = shutdown_rx.clone();
         let worker_metrics = metrics.clone();
@@ -103,7 +106,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let handle = tokio::spawn(async move {
             worker_loop(
                 worker_id,
-                worker_db,
+                worker_repository,
+                worker_data_dir,
                 worker_amqp_addr,
                 worker_shutdown,
                 worker_metrics,
