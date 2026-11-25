@@ -1,5 +1,5 @@
 use axum::{
-    Extension, Json,
+    Json,
     extract::{Request, State},
     http::{StatusCode, header::AUTHORIZATION},
     middleware::Next,
