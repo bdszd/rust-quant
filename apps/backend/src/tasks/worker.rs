@@ -317,6 +317,7 @@ async fn process_delivery(
     .await;
 
     let execution_duration_ms = duration_to_ms(execution_started.elapsed());
+    let task_succeeded = matches!(&execution, Ok(Ok(_)));
     let persistence_result = match execution {
         Ok(Ok(result)) => match serde_json::to_value(&result) {
             Ok(payload) => {
@@ -386,6 +387,12 @@ async fn process_delivery(
     }
 
     metrics.worker_finished();
+    if task_succeeded {
+        metrics.increment_tasks_succeeded();
+    } else {
+        metrics.increment_tasks_failed();
+    }
+
     let ack_started = Instant::now();
     match delivery.ack(BasicAckOptions::default()).await {
         Ok(()) => {
