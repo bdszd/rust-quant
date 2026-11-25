@@ -2,7 +2,7 @@ name: Rust CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, refactor/backend-architecture]
   pull_request:
     branches: [main]
 
