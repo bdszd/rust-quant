@@ -1,10 +1,10 @@
 use crate::{
+    infrastructure::security::login_rate_limiter::LoginRateLimiter,
     modules::{
         backtest::application::BacktestApplicationService,
         dataset::application::DatasetApplicationService,
     },
     observability::metrics::Metrics,
-    infrastructure::security::login_rate_limiter::LoginRateLimiter,
 };
 use identity::auth::{AuthenticationService, RegistrationService};
 use sqlx::PgPool;
