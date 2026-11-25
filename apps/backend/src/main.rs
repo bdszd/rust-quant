@@ -11,6 +11,13 @@ mod tasks;
 use std::{env, path::PathBuf, sync::Arc};
 
 use app::router::build_router;
+use modules::{
+    backtest::{
+        application::BacktestApplicationService,
+        infrastructure::postgres_repository::PgBacktestRepository,
+    },
+    dataset::infrastructure::filesystem_catalog::FilesystemDatasetCatalog,
+};
 use identity::auth::AuthenticationService;
 use tokio::sync::watch;
 
@@ -51,17 +58,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let reset_count = storage::reset_running_tasks(&db).await?;
     println!("已恢复 {reset_count} 个未完成任务");
 
-    // 4. 初始化进程级性能统计。
+    // 4. 初始化回测应用服务及其技术实现。
+    let backtest_repository = Arc::new(PgBacktestRepository::new(db.clone()));
+    let dataset_catalog = Arc::new(FilesystemDatasetCatalog::new(data_dir.clone()));
+    let backtest = Arc::new(BacktestApplicationService::new(
+        backtest_repository,
+        dataset_catalog,
+    ));
+
+    // 5. 初始化进程级性能统计。
     let metrics = Arc::new(Metrics::new(WORKER_COUNT));
 
-    // 5. 创建认证服务。
+    // 6. 创建认证服务。
     // 认证服务和 Backend 使用同一个 PostgreSQL 连接池。
     let authentication = AuthenticationService::new(db.clone());
 
-    // 6. 创建统一关闭信号。
+    // 7. 创建统一关闭信号。
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    // 7. 启动 Outbox Publisher。
+    // 8. 启动 Outbox Publisher。
     let publisher_db = db.clone();
     let publisher_amqp_addr = amqp_addr.clone();
     let publisher_shutdown = shutdown_rx.clone();
@@ -77,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await;
     });
 
-    // 8. 启动固定数量的 RabbitMQ Consumer。
+    // 9. 启动固定数量的 RabbitMQ Consumer。
     let mut worker_handles = Vec::with_capacity(WORKER_COUNT);
 
     for worker_id in 0..WORKER_COUNT {
@@ -100,18 +115,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         worker_handles.push(handle);
     }
 
-    // 9. 创建应用状态。
+    // 10. 创建应用状态。
     let state = AppState {
         data_dir,
         db,
         metrics,
+        backtest,
         authentication,
     };
 
-    // 10. 创建应用 Router。
+    // 11. 创建应用 Router。
     let app = build_router(state);
 
-    // 11. 启动 HTTP 服务，监听 Ctrl+C。
+    // 12. 启动 HTTP 服务，监听 Ctrl+C。
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;
     println!("Backend listening on http://0.0.0.0:8000");
 
