@@ -3,7 +3,6 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use backtest_core::ExecutionMode;
 use serde::Deserialize;
 
 use crate::{
@@ -15,7 +14,7 @@ use crate::{
     },
     modules::backtest::{
         application::commands::CreateBacktestCommand,
-        domain::{BacktestJobConfig, StrategyConfig},
+        domain::{BacktestJobConfig, ExecutionMode, StrategyConfig},
     },
 };
 
