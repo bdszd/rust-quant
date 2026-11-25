@@ -6,7 +6,9 @@ use uuid::Uuid;
 
 use crate::{
     app::{router::build_router, state::AppState},
-    infrastructure::{database::postgres_pool as storage, security::login_rate_limiter::LoginRateLimiter},
+    infrastructure::{
+        database::postgres_pool as storage, security::login_rate_limiter::LoginRateLimiter,
+    },
     modules::{
         backtest::{
             application::{
@@ -151,9 +153,12 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         "Backend 实例 {instance_id} listening on http://0.0.0.0:8000，Worker 数量：{worker_count}"
     );
 
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     println!("HTTP 服务已关闭，通知后台任务退出");
     let _ = shutdown_tx.send(true);
