@@ -142,7 +142,7 @@ pub async fn create_backtest(
             ),
             BacktestApplicationError::DatasetCatalog(message)
             | BacktestApplicationError::Repository(message) => {
-                api_error(StatusCode::INTERNAL_SERVER_ERROR, message)
+                api_error(StatusCode::INTERNAL_SERVER_ERROR, message.to_string())
             }
         })?;
 
