@@ -468,7 +468,7 @@ impl PgBacktestRepository {
             r#"
             INSERT INTO backtest_task_attempts
                 (id, task_id, attempt_number, status, worker_id, lease_expires_at)
-            VALUES ($1, $2, $3, $4, $5, NOW() + ($6 * INTERVAL '1 second'))
+            VALUES ($1, $2, $3, $4, $5, clock_timestamp() + ($6 * INTERVAL '1 second'))
             "#,
         )
         .bind(attempt_id)
