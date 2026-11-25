@@ -14,7 +14,11 @@ use app::router::build_router;
 use identity::auth::AuthenticationService;
 use modules::{
     backtest::{
-        application::BacktestApplicationService,
+        application::{
+            BacktestApplicationService,
+            execution::BacktestExecutionService,
+            ports::{BacktestExecutionRepository, BacktestRepository, OutboxRepository},
+        },
         infrastructure::postgres_repository::PgBacktestRepository,
     },
     dataset::{
@@ -60,14 +64,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 3. 初始化回测 Repository。过期任务恢复将由带租约的 Worker 恢复流程负责，
     // 不在每次进程启动时全局重置 running 状态，避免多实例互相干扰。
     let backtest_repository = Arc::new(PgBacktestRepository::new(db.clone()));
-    let publisher_repository = backtest_repository.clone();
-    let worker_repository = backtest_repository.clone();
+    let publisher_repository: Arc<dyn OutboxRepository> = backtest_repository.clone();
+    let worker_repository: Arc<dyn BacktestExecutionRepository> = backtest_repository.clone();
+    let application_repository: Arc<dyn BacktestRepository> = backtest_repository.clone();
+    let worker_execution_service = Arc::new(BacktestExecutionService::new(worker_repository));
     let worker_data_dir = data_dir.clone();
 
     // 4. 初始化回测应用服务及其技术实现。
     let dataset_catalog = Arc::new(FilesystemDatasetCatalog::new(data_dir.clone()));
     let backtest = Arc::new(BacktestApplicationService::new(
-        backtest_repository,
+        application_repository,
         dataset_catalog.clone(),
     ));
     let datasets = Arc::new(DatasetApplicationService::new(dataset_catalog));
@@ -101,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut worker_handles = Vec::with_capacity(WORKER_COUNT);
 
     for worker_id in 0..WORKER_COUNT {
-        let worker_repository = worker_repository.clone();
+        let worker_execution_service = worker_execution_service.clone();
         let worker_data_dir = worker_data_dir.clone();
         let worker_amqp_addr = amqp_addr.clone();
         let worker_shutdown = shutdown_rx.clone();
@@ -110,7 +116,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let handle = tokio::spawn(async move {
             worker_loop(
                 worker_id,
-                worker_repository,
+                worker_execution_service,
                 worker_data_dir,
                 worker_amqp_addr,
                 worker_shutdown,
