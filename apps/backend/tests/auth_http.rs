@@ -6,7 +6,7 @@ use axum::{
 };
 use identity::{
     auth::{AuthenticationService, RegistrationService},
-    user::{NewUser, RegistrationService as _, UserRepository, UserStatus},
+    user::{UserRepository, UserStatus},
 };
 use quant_backend::{
     app::{router::build_router, state::AppState},
