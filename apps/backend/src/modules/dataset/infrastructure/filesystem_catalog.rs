@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::modules::backtest::application::ports::DatasetCatalog;
 
@@ -45,6 +45,6 @@ impl DatasetCatalog for FilesystemDatasetCatalog {
         let bars = directory.join("bars.csv");
         let metadata = directory.join("quality_report.json");
 
-        Ok(Path::new(&bars).is_file() && Path::new(&metadata).is_file())
+        Ok(bars.is_file() && metadata.is_file())
     }
 }
