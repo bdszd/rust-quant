@@ -48,10 +48,7 @@ fn test_app(pool: PgPool) -> (axum::Router, std::path::PathBuf) {
     (build_router(state), data_dir)
 }
 
-async fn send(
-    app: &axum::Router,
-    request: Request<Body>,
-) -> axum::response::Response {
+async fn send(app: &axum::Router, request: Request<Body>) -> axum::response::Response {
     app.clone().oneshot(request).await.unwrap()
 }
 
@@ -105,8 +102,7 @@ async fn auth_http_endpoints_complete_the_login_lifecycle(pool: PgPool) {
     .await;
     assert_eq!(response.status(), StatusCode::CREATED);
     let registered: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
-            .unwrap();
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(registered["username"], "http_auth_user");
     assert_eq!(registered["email"], "http-auth@example.test");
     assert!(registered.get("password").is_none());
@@ -247,11 +243,7 @@ async fn duplicate_registration_returns_conflict(pool: PgPool) {
     .await;
     assert_eq!(first.status(), StatusCode::CREATED);
 
-    let second = send(
-        &app,
-        json_request("POST", "/api/auth/register", payload),
-    )
-    .await;
+    let second = send(&app, json_request("POST", "/api/auth/register", payload)).await;
     assert_eq!(second.status(), StatusCode::CONFLICT);
 
     fs::remove_dir_all(data_dir).unwrap();
