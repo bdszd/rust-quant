@@ -109,12 +109,11 @@ async fn expired_attempt_cannot_complete_failure(pool: PgPool) {
         .await;
 
     assert!(result.unwrap_err().contains("不再拥有该执行 Attempt"));
-    let status: String =
-        sqlx::query_scalar("SELECT status FROM backtest_tasks WHERE id = $1")
-            .bind(task_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let status: String = sqlx::query_scalar("SELECT status FROM backtest_tasks WHERE id = $1")
+        .bind(task_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(status, "running");
 }
 
@@ -129,9 +128,9 @@ async fn expired_attempt_can_be_taken_over_and_old_worker_is_rejected(pool: PgPo
         .unwrap();
 
     let new_attempt_id = match outcome {
-        quant_backend::modules::backtest::application::ports::ClaimExecutionOutcome::Claimed(job) => {
-            job.attempt.id
-        }
+        quant_backend::modules::backtest::application::ports::ClaimExecutionOutcome::Claimed(
+            job,
+        ) => job.attempt.id,
         other => panic!("expected a new attempt, got {other:?}"),
     };
 
@@ -179,11 +178,10 @@ async fn active_attempt_can_complete_success(pool: PgPool) {
         .await
         .unwrap();
 
-    let task_status: String =
-        sqlx::query_scalar("SELECT status FROM backtest_tasks WHERE id = $1")
-            .bind(task_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let task_status: String = sqlx::query_scalar("SELECT status FROM backtest_tasks WHERE id = $1")
+        .bind(task_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(task_status, "succeeded");
 }
