@@ -8,6 +8,7 @@
 - Normalize：统一日期和单位。
 - Validation：检查 OHLC、成交量、成交额基本有效性。
 - Storage：PostgreSQL 幂等 upsert 与区间查询。
+- 数据库迁移由 Backend 统一管理；本 crate 不提供独立 migrator，避免多个 crate 在同一数据库中争用 SQLx 默认 `_sqlx_migrations` 表。当前行情数据库接入暂未启用，后续接入时应将本目录迁移纳入 Backend 的统一迁移序列。
 - Service：向调用方提供统一导入和查询入口。
 
 本 crate 不依赖 backtest-core、trading-core 或 backend。
