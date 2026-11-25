@@ -12,13 +12,13 @@ pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
         .map(|value| value.parse::<u32>())
         .transpose()
         .map_err(|error| sqlx::Error::Configuration(
-            format!("RUST_QUANT_DB_MAX_CONNECTIONS 必须是正整数：{error}").into()
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("RUST_QUANT_DB_MAX_CONNECTIONS 必须是正整数：{error}")).into()
         ))?
         .unwrap_or(10);
 
     if max_connections == 0 {
         return Err(sqlx::Error::Configuration(
-            "RUST_QUANT_DB_MAX_CONNECTIONS 必须大于 0".into()
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "RUST_QUANT_DB_MAX_CONNECTIONS 必须大于 0").into()
         ));
     }
 
