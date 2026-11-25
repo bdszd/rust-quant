@@ -1,13 +1,13 @@
 use identity::{
     auth::{AuthenticationService, RegistrationService},
-    user::{NewUser, UserStatus},
+    user::{NewUser, UserRepository, UserStatus},
 };
 use sqlx::PgPool;
 
 #[sqlx::test(migrations = "./migrations")]
 async fn registration_login_logout_and_logout_all_work(pool: PgPool) {
     let registration = RegistrationService::new(pool.clone());
-    let authentication = AuthenticationService::new(pool);
+    let authentication = AuthenticationService::new(pool.clone());
 
     let user = registration
         .register(
@@ -71,5 +71,32 @@ async fn registration_login_logout_and_logout_all_work(pool: PgPool) {
             .await
             .unwrap()
             .is_none()
+    );
+
+    let active_session = authentication
+        .login("auth_flow_user", "correct-horse-battery")
+        .await
+        .unwrap();
+    assert!(
+        authentication
+            .validate_token(&active_session.token)
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    UserRepository::new(pool)
+        .update_status(user.id, UserStatus::Disabled)
+        .await
+        .unwrap()
+        .expect("user should exist");
+
+    assert!(
+        authentication
+            .validate_token(&active_session.token)
+            .await
+            .unwrap()
+            .is_none(),
+        "disabling a user must invalidate their existing sessions"
     );
 }
