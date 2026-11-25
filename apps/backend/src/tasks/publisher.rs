@@ -1,31 +1,37 @@
 use crate::{
-    infrastructure::database::backtest_repository as storage,
     infrastructure::messaging::rabbitmq::{BACKTEST_QUEUE, connect_channel},
+    modules::backtest::{
+        application::ports::OutboxRepository,
+        infrastructure::postgres_repository::PgBacktestRepository,
+    },
     observability::metrics::Metrics,
 };
 use lapin::{
     BasicProperties,
     options::{BasicPublishOptions, ConfirmSelectOptions},
 };
-use sqlx::PgPool;
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
+use uuid::Uuid;
 
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(500);
 const RETRY_DELAY: Duration = Duration::from_secs(2);
 const BATCH_SIZE: i64 = 32;
+const OUTBOX_LEASE_SECONDS: i64 = 30;
 
-/// 从 PostgreSQL Outbox 读取待发布任务，并投递到 RabbitMQ。
+/// 使用 Outbox Repository 领取事件并发布到 RabbitMQ。
 ///
-/// 只有收到 RabbitMQ Publisher Confirm 后，才将 Outbox 记录标记为已发布。
+/// 数据库领取锁保证多个 Publisher 不会同时正常处理同一条事件。
+/// RabbitMQ Confirm 成功后才标记 published；崩溃窗口仍可能产生重复消息，
+/// 因此 Worker 必须按 task 状态幂等处理。
 pub async fn publisher_loop(
-    db: PgPool,
+    repository: Arc<PgBacktestRepository>,
     amqp_addr: String,
     mut shutdown: watch::Receiver<bool>,
     metrics: Arc<Metrics>,
 ) {
-    println!("Outbox Publisher 已启动");
+    let publisher_id = Uuid::new_v4().to_string();
+    println!("Outbox Publisher {publisher_id} 已启动");
 
     loop {
         if *shutdown.borrow() {
@@ -50,7 +56,6 @@ pub async fn publisher_loop(
             eprintln!("启用 RabbitMQ Publisher Confirm 失败：{error}");
             drop(channel);
             drop(connection);
-
             if wait_or_shutdown(&mut shutdown, RETRY_DELAY).await {
                 break;
             }
@@ -58,101 +63,89 @@ pub async fn publisher_loop(
         }
 
         metrics.rabbitmq_connection_opened();
-        println!("Outbox Publisher 已连接 RabbitMQ");
-
         let mut reconnect = false;
 
         loop {
             tokio::select! {
-                _ = shutdown.changed() => {
-                    println!("Outbox Publisher 收到关闭信号");
+                changed = shutdown.changed() => {
+                    let _ = changed;
                     metrics.rabbitmq_connection_closed();
                     return;
                 }
-
                 _ = tokio::time::sleep(PUBLISH_INTERVAL) => {
                     let query_started = std::time::Instant::now();
-
-                    let messages = match storage::list_pending_outbox(&db, BATCH_SIZE).await {
-                        Ok(messages) => messages,
+                    let events = match repository
+                        .claim_pending(&publisher_id, BATCH_SIZE, OUTBOX_LEASE_SECONDS)
+                        .await
+                    {
+                        Ok(events) => events,
                         Err(error) => {
-                            eprintln!("读取 Outbox 失败：{error}");
+                            eprintln!("领取 Outbox 事件失败：{error}");
                             continue;
                         }
                     };
-
                     metrics.record_duration("outbox_query", query_started.elapsed());
 
-                    // 收集本批次中已经收到 RabbitMQ Confirm 的任务。
-                    let mut confirmed_task_ids = Vec::with_capacity(messages.len());
-
-                    for message in messages {
-                        let publish_started = std::time::Instant::now();
-
+                    for event in events {
                         metrics.increment_publish_total();
-
-                        if let Err(error) = publish_one(&channel, &message.payload).await {
-                            metrics.increment_publish_failed();
-
-                            if error.contains("NACK") || error.contains("Confirm") {
-                                metrics.increment_publish_confirm_failed();
+                        let publish_started = std::time::Instant::now();
+                        let payload = match serde_json::to_vec(&event.payload) {
+                            Ok(payload) => payload,
+                            Err(error) => {
+                                metrics.increment_publish_failed();
+                                let message = format!("序列化 Outbox 事件失败：{error}");
+                                let _ = repository
+                                    .release_after_failure(&event.id, &publisher_id, &message)
+                                    .await;
+                                continue;
                             }
+                        };
 
-                            metrics.record_duration(
-                                "rabbitmq_publish_confirm",
-                                publish_started.elapsed()
-                            );
-
-                            eprintln!(
-                                "发布任务 {} 到 RabbitMQ 失败：{error}，准备重新连接",
-                                message.task_id
-                            );
-
-                            reconnect = true;
-                            break;
-                        }
-
-                        metrics.record_duration(
-                            "rabbitmq_publish_confirm",
-                            publish_started.elapsed()
-                        );
-
-                        // 这里只收集 ID，暂时不逐条 UPDATE 数据库。
-                        confirmed_task_ids.push(message.task_id);
-                    }
-
-                    // 一批消息发布完成后，用一条 SQL 批量更新 Outbox。
-                    //
-                    // 即使本批次中途发布失败，也要先标记已经 Confirm 的消息，
-                    // 避免不必要的重复投递。
-                    if !confirmed_task_ids.is_empty() {
-                        let update_started = std::time::Instant::now();
-
-                        match storage::mark_outbox_published_batch(
-                            &db,
-                            &confirmed_task_ids
-                        ).await {
-                            Ok(updated) => {
-                                println!(
-                                    "本批次 {} 条消息已收到 Confirm，成功标记 {} 条 Outbox 记录",
-                                    confirmed_task_ids.len(),
-                                    updated
+                        match publish_one(&channel, &payload).await {
+                            Ok(()) => {
+                                metrics.record_duration(
+                                    "rabbitmq_publish_confirm",
+                                    publish_started.elapsed(),
                                 );
+                                match repository.mark_published(&event.id, &publisher_id).await {
+                                    Ok(true) => {
+                                        println!(
+                                            "Outbox 事件 {}（任务 {}）已发布",
+                                            event.id, event.task_id
+                                        );
+                                    }
+                                    Ok(false) => {
+                                        eprintln!(
+                                            "Outbox 事件 {} 的领取锁已失效，未标记 published",
+                                            event.id
+                                        );
+                                    }
+                                    Err(error) => {
+                                        // Broker 已确认但 DB 未标记时允许重复投递。
+                                        eprintln!(
+                                            "事件 {} 已被 RabbitMQ 确认，但更新 Outbox 失败：{error}",
+                                            event.id
+                                        );
+                                    }
+                                }
                             }
                             Err(error) => {
-                                // RabbitMQ 已确认但数据库未标记时，
-                                // 下一轮可能重复发布。
-                                // Worker 仍通过 task_id 和数据库状态保证幂等。
-                                eprintln!(
-                                    "批量更新 Outbox 状态失败：{error}，后续可能重复发布"
+                                metrics.increment_publish_failed();
+                                if error.contains("NACK") || error.contains("Confirm") {
+                                    metrics.increment_publish_confirm_failed();
+                                }
+                                metrics.record_duration(
+                                    "rabbitmq_publish_confirm",
+                                    publish_started.elapsed(),
                                 );
+                                let _ = repository
+                                    .release_after_failure(&event.id, &publisher_id, &error)
+                                    .await;
+                                eprintln!("发布 Outbox 事件 {} 失败：{error}", event.id);
+                                reconnect = true;
+                                break;
                             }
                         }
-
-                        metrics.record_duration(
-                            "outbox_update",
-                            update_started.elapsed()
-                        );
                     }
 
                     if reconnect {
@@ -171,10 +164,10 @@ pub async fn publisher_loop(
         }
     }
 
-    println!("Outbox Publisher 已退出");
+    println!("Outbox Publisher {publisher_id} 已退出");
 }
 
-async fn publish_one(channel: &lapin::Channel, payload: &str) -> Result<(), String> {
+async fn publish_one(channel: &lapin::Channel, payload: &[u8]) -> Result<(), String> {
     let confirm = channel
         .basic_publish(
             "",
@@ -183,7 +176,7 @@ async fn publish_one(channel: &lapin::Channel, payload: &str) -> Result<(), Stri
                 mandatory: true,
                 ..BasicPublishOptions::default()
             },
-            payload.as_bytes(),
+            payload,
             BasicProperties::default()
                 .with_delivery_mode(2)
                 .with_content_type("application/json".into()),
@@ -198,7 +191,6 @@ async fn publish_one(channel: &lapin::Channel, payload: &str) -> Result<(), Stri
     if !confirmation.is_ack() {
         return Err("RabbitMQ 返回 NACK".to_string());
     }
-
     if confirmation.take_message().is_some() {
         return Err("消息未能路由到任务队列".to_string());
     }
