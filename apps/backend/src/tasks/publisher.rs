@@ -87,6 +87,7 @@ pub async fn publisher_loop(
                     metrics.record_duration("outbox_query", query_started.elapsed());
 
                     for event in events {
+                        println!("发布 Outbox 事件类型：{}", event.event_type);
                         metrics.increment_publish_total();
                         let publish_started = std::time::Instant::now();
                         let payload = match serde_json::to_vec(&event.payload) {
