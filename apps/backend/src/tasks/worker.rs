@@ -307,7 +307,7 @@ async fn process_delivery(
     let task_id = claimed.task_id;
     let attempt_id = claimed.attempt_id;
     let config = claimed.config;
-    let execution_data_dir = data_dir.clone();
+    let execution_data_dir = data_dir.to_path_buf();
     let execution_metrics = metrics.clone();
     let execution_started = Instant::now();
 
