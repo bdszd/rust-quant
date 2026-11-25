@@ -391,7 +391,7 @@ impl PgBacktestRepository {
         if domain_status == TaskStatus::Running {
             let active = sqlx::query(
                 r#"
-                SELECT id, lease_expires_at <= NOW() AS expired
+                SELECT id, lease_expires_at <= clock_timestamp() AS expired
                 FROM backtest_task_attempts
                 WHERE task_id = $1 AND status = 'running'
                 ORDER BY attempt_number DESC
@@ -515,9 +515,12 @@ impl PgBacktestRepository {
         let result = sqlx::query(
             r#"
             UPDATE backtest_task_attempts
-            SET heartbeat_at = NOW(),
-                lease_expires_at = NOW() + ($3 * INTERVAL '1 second')
-            WHERE id = $1 AND worker_id = $2 AND status = 'running'
+            SET heartbeat_at = clock_timestamp(),
+                lease_expires_at = clock_timestamp() + ($3 * INTERVAL '1 second')
+            WHERE id = $1
+              AND worker_id = $2
+              AND status = 'running'
+              AND lease_expires_at > clock_timestamp()
             "#,
         )
         .bind(attempt_id)
@@ -572,7 +575,8 @@ impl PgBacktestRepository {
             r#"
             UPDATE backtest_task_attempts
             SET status = $4, finished_at = NOW(), duration_ms = $5
-            WHERE id = $1 AND task_id = $2 AND worker_id = $3 AND status = 'running'
+            WHERE id = $1 AND task_id = $2 AND worker_id = $3
+              AND status = 'running' AND lease_expires_at > clock_timestamp()
             "#,
         )
         .bind(attempt_id)
@@ -656,7 +660,8 @@ impl PgBacktestRepository {
             r#"
             UPDATE backtest_task_attempts
             SET status = $4, finished_at = NOW(), duration_ms = $5, error = $6
-            WHERE id = $1 AND task_id = $2 AND worker_id = $3 AND status = 'running'
+            WHERE id = $1 AND task_id = $2 AND worker_id = $3
+              AND status = 'running' AND lease_expires_at > clock_timestamp()
             "#,
         )
         .bind(attempt_id)
