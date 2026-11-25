@@ -263,14 +263,14 @@ async fn process_delivery(
 
     println!(
         "Worker 已认领任务 {}，Attempt {}",
-        claimed.task_id, claimed.attempt_number
+        claimed.task_id, claimed.attempt.attempt_number
     );
     metrics.worker_started();
 
     // 执行期间定时续租，避免长回测被其他 Worker 当成过期任务接管。
     let (heartbeat_stop_tx, mut heartbeat_stop_rx) = watch::channel(false);
     let heartbeat_repository = repository.clone();
-    let heartbeat_attempt_id = claimed.attempt_id;
+    let heartbeat_attempt_id = claimed.attempt.id;
     let heartbeat_worker_id = worker_id.clone();
     let heartbeat_handle = tokio::spawn(async move {
         let mut interval = tokio::time::interval(HEARTBEAT_INTERVAL);
