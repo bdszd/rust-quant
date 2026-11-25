@@ -16,7 +16,10 @@ use modules::{
         application::BacktestApplicationService,
         infrastructure::postgres_repository::PgBacktestRepository,
     },
-    dataset::infrastructure::filesystem_catalog::FilesystemDatasetCatalog,
+    dataset::{
+        application::DatasetApplicationService,
+        infrastructure::filesystem_catalog::FilesystemDatasetCatalog,
+    },
 };
 use identity::auth::AuthenticationService;
 use tokio::sync::watch;
@@ -65,8 +68,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dataset_catalog = Arc::new(FilesystemDatasetCatalog::new(data_dir.clone()));
     let backtest = Arc::new(BacktestApplicationService::new(
         backtest_repository,
-        dataset_catalog,
+        dataset_catalog.clone(),
     ));
+    let datasets = Arc::new(DatasetApplicationService::new(dataset_catalog));
 
     // 5. 初始化进程级性能统计。
     let metrics = Arc::new(Metrics::new(WORKER_COUNT));
@@ -124,6 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         db,
         metrics,
         backtest,
+        datasets,
         authentication,
     };
 
