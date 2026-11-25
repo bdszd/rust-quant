@@ -95,7 +95,7 @@ pub async fn publisher_loop(
                                 metrics.increment_publish_failed();
                                 let message = format!("序列化 Outbox 事件失败：{error}");
                                 let _ = repository
-                                    .release_after_failure(&event.id, &publisher_id, &message)
+                                    .release_after_failure(event.id, &publisher_id, &message)
                                     .await;
                                 continue;
                             }
@@ -107,7 +107,7 @@ pub async fn publisher_loop(
                                     "rabbitmq_publish_confirm",
                                     publish_started.elapsed(),
                                 );
-                                match repository.mark_published(&event.id, &publisher_id).await {
+                                match repository.mark_published(event.id, &publisher_id).await {
                                     Ok(true) => {
                                         println!(
                                             "Outbox 事件 {}（任务 {}）已发布",
@@ -139,7 +139,7 @@ pub async fn publisher_loop(
                                     publish_started.elapsed(),
                                 );
                                 let _ = repository
-                                    .release_after_failure(&event.id, &publisher_id, &error)
+                                    .release_after_failure(event.id, &publisher_id, &error)
                                     .await;
                                 eprintln!("发布 Outbox 事件 {} 失败：{error}", event.id);
                                 reconnect = true;
