@@ -66,7 +66,7 @@ fn json_request(method: &str, uri: &str, body: serde_json::Value) -> Request<Bod
 
 #[sqlx::test(migrations = "./migrations")]
 async fn auth_http_endpoints_complete_the_login_lifecycle(pool: PgPool) {
-    let (app, data_dir) = test_app(pool).await;
+    let (app, data_dir) = test_app(pool);
 
     // 未登录访问受保护接口，必须在进入 Handler 前被拒绝。
     let response = send(
