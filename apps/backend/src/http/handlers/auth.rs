@@ -87,7 +87,7 @@ pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> Result<axum::response::Response, (StatusCode, Json<ApiError>)> {
     // 仅使用 TCP 连接的对端地址，不直接信任客户端可伪造的 X-Forwarded-For。
-    // 集成测试未经过真实 TCP Listener 时，使用 loopback 地址。
+    // 测试会显式注入 ConnectInfo，线上由 Axum Listener 提供。
     let client_ip = client.ip();
 
     let retry_after = state
