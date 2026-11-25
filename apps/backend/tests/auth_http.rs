@@ -53,7 +53,10 @@ fn test_app(pool: PgPool) -> (axum::Router, std::path::PathBuf) {
     (build_router(state), data_dir)
 }
 
-async fn send(app: &axum::Router, request: Request<Body>) -> axum::response::Response {
+async fn send(app: &axum::Router, mut request: Request<Body>) -> axum::response::Response {
+    request.extensions_mut().insert(axum::extract::ConnectInfo(
+        "127.0.0.1:40000".parse().unwrap(),
+    ));
     app.clone().oneshot(request).await.unwrap()
 }
 
