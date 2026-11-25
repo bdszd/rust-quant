@@ -67,19 +67,21 @@ impl BacktestApplicationService {
     pub async fn get_task(
         &self,
         task_id: Uuid,
+        user_id: Uuid,
     ) -> Result<Option<BacktestTaskView>, BacktestApplicationError> {
         self.repository
-            .find_task(task_id)
+            .find_task(task_id, user_id)
             .await
             .map_err(BacktestApplicationError::Repository)
     }
 
     pub async fn list_tasks(
         &self,
+        user_id: Uuid,
         limit: i64,
     ) -> Result<Vec<BacktestTaskView>, BacktestApplicationError> {
         self.repository
-            .list_tasks(limit.clamp(1, 100))
+            .list_tasks(user_id, limit.clamp(1, 100))
             .await
             .map_err(BacktestApplicationError::Repository)
     }
