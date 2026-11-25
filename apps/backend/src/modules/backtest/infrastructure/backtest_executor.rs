@@ -4,7 +4,8 @@ use crate::modules::backtest::{
 };
 use crate::observability::metrics::Metrics;
 use backtest_core::{
-    BacktestConfig, Bar, BuyAndHoldStrategy, ExecutionMode as CoreExecutionMode, SmaCrossStrategy, Strategy, load_data, run,
+    BacktestConfig, Bar, BuyAndHoldStrategy, ExecutionMode as CoreExecutionMode,
+    SmaCrossStrategy, Strategy, load_data, run,
 };
 use std::{
     path::{Path as FsPath, PathBuf},
@@ -79,8 +80,12 @@ pub fn execute_config(
         stamp_duty_rate: config.stamp_duty_rate,
         min_commission: config.min_commission,
         execution_mode: match config.execution_mode {
-            crate::modules::backtest::domain::ExecutionMode::NextOpen => CoreExecutionMode::NextOpen,
-            crate::modules::backtest::domain::ExecutionMode::NextClose => CoreExecutionMode::NextClose,
+            crate::modules::backtest::domain::ExecutionMode::NextOpen => {
+                CoreExecutionMode::NextOpen
+            }
+            crate::modules::backtest::domain::ExecutionMode::NextClose => {
+                CoreExecutionMode::NextClose
+            }
         },
     };
 
