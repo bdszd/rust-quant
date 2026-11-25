@@ -5,7 +5,7 @@ use tokio::sync::watch;
 
 use crate::{
     app::{router::build_router, state::AppState},
-    infrastructure::database::backtest_repository as storage,
+    infrastructure::database::postgres_pool as storage,
     modules::{
         backtest::{
             application::{
