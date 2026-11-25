@@ -1,4 +1,4 @@
-use crate::domain::{AmountUnit, DailyBar, PriceUnit, RawDailyBar, VolumeUnit};
+use crate::domain::{AmountUnit, DailyBar, RawDailyBar, VolumeUnit};
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 
 pub fn normalize_date(value: &str) -> Result<String, String> {
