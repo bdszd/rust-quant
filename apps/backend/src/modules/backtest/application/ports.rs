@@ -104,7 +104,6 @@ pub trait BacktestExecutionRepository: Send + Sync {
     ) -> Result<(), String>;
 }
 
-
 /// 回测执行能力。Worker 只调用这个接口，不关心具体回测引擎、文件目录或指标实现。
 pub trait BacktestExecutor: Send + Sync {
     fn execute(
