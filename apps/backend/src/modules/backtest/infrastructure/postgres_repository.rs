@@ -536,13 +536,16 @@ impl PgBacktestRepository {
         .await
         .map_err(|error| format!("保存回测结果失败：{error}"))?;
 
-        sqlx::query(
+        let task_update = sqlx::query(
             "UPDATE backtest_tasks SET status = 'succeeded', updated_at = NOW() WHERE id = $1 AND status = 'running'"
         )
         .bind(task_id)
         .execute(&mut *tx)
         .await
         .map_err(|error| format!("更新任务成功状态失败：{error}"))?;
+        if task_update.rows_affected() != 1 {
+            return Err("任务已不处于 running 状态，无法提交成功结果".to_string());
+        }
 
         tx.commit().await.map_err(|error| format!("提交成功结果事务失败：{error}"))
     }
@@ -578,13 +581,16 @@ impl PgBacktestRepository {
             return Err("当前 Worker 已不再拥有该执行 Attempt".to_string());
         }
 
-        sqlx::query(
+        let task_update = sqlx::query(
             "UPDATE backtest_tasks SET status = 'failed', updated_at = NOW() WHERE id = $1 AND status = 'running'"
         )
         .bind(task_id)
         .execute(&mut *tx)
         .await
         .map_err(|error| format!("更新任务失败状态失败：{error}"))?;
+        if task_update.rows_affected() != 1 {
+            return Err("任务已不处于 running 状态，无法提交失败结果".to_string());
+        }
 
         tx.commit().await.map_err(|error| format!("提交失败结果事务失败：{error}"))
     }
