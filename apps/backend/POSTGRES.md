@@ -87,4 +87,4 @@ The SQL file under `crates/market-data/migrations` is currently not invoked by t
 
 ## 7. Existing PostgreSQL data
 
-The backtest migration creates the normalized task, job, Attempt, result, and Outbox tables. It does not delete existing data or Docker volumes. No migration is run as part of this refactor work; migrations run only when the Backend application is started.
+The backtest migration creates the normalized task, job, Attempt, result, and Outbox tables. If it finds incompatible legacy `backtest_tasks`, `backtest_jobs`, or `backtest_outbox` tables, it renames them to `*_legacy_v1` and leaves their data intact; it does not attempt an automatic data conversion. It does not delete existing data or Docker volumes. No migration is run as part of this refactor work; migrations run only when the Backend application is started.
