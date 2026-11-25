@@ -4,12 +4,12 @@ use axum::{
     http::{StatusCode, header},
     response::IntoResponse,
 };
-use std::net::SocketAddr;
 use identity::{
     auth::{AuthenticationError, LoginError, RegistrationError},
     user::{NewUser, User, UserRepository, UserStatus},
 };
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 
 use crate::{
     app::state::AppState,
