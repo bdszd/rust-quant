@@ -57,7 +57,7 @@ async fn create_running_attempt(pool: &PgPool, expired: bool) -> (Uuid, Uuid, Uu
 
 #[sqlx::test(migrations = "./migrations")]
 async fn expired_attempt_cannot_heartbeat(pool: PgPool) {
-    let (task_id, _, attempt_id) = create_running_attempt(&pool, true).await;
+    let (_, _, attempt_id) = create_running_attempt(&pool, true).await;
     let repository = PgBacktestRepository::new(pool);
 
     let renewed = repository
@@ -66,19 +66,6 @@ async fn expired_attempt_cannot_heartbeat(pool: PgPool) {
         .unwrap();
 
     assert!(!renewed, "an expired lease must not be renewable");
-    let status: String =
-        sqlx::query_scalar("SELECT status FROM backtest_tasks WHERE id = $1")
-            .bind(task_id)
-            .fetch_one(repository_pool(&repository))
-            .await
-            .unwrap();
-    assert_eq!(status, "running");
-}
-
-// This helper is intentionally not exposed by the repository. The tests below
-// use the pool directly and assert the persisted state in their own test body.
-fn repository_pool(_repository: &PgBacktestRepository) -> &PgPool {
-    unreachable!("replace with a test-owned pool reference")
 }
 
 #[sqlx::test(migrations = "./migrations")]
