@@ -552,24 +552,47 @@ impl PgBacktestRepository {
         payload: &Value,
         duration_ms: i64,
     ) -> Result<(), String> {
-        let payload_json = serde_json::to_string(payload)
+        let record = BacktestResultRecord {
+            task_id,
+            schema_version: 1,
+            payload: payload.clone(),
+        };
+        let payload_json = serde_json::to_string(&record.payload)
             .map_err(|error| format!("序列化回测结果失败：{error}"))?;
+
         let mut tx = self
             .pool
             .begin()
             .await
             .map_err(|error| format!("开启成功结果事务失败：{error}"))?;
 
+        let current_status: String =
+            sqlx::query_scalar("SELECT status FROM backtest_tasks WHERE id = $1 FOR UPDATE")
+                .bind(task_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|error| format!("读取任务当前状态失败：{error}"))?
+                .ok_or_else(|| "回测任务不存在".to_string())?;
+        let mut task = BacktestTask {
+            id: task_id,
+            user_id: None,
+            status: TaskStatus::parse(&current_status)
+                .ok_or_else(|| format!("未知任务状态：{current_status}"))?,
+        };
+        task.transition(TaskStatus::Succeeded)
+            .map_err(|error| format!("任务状态转换失败：{error}"))?;
+
         let attempt = sqlx::query(
             r#"
             UPDATE backtest_task_attempts
-            SET status = 'succeeded', finished_at = NOW(), duration_ms = $4
+            SET status = $4, finished_at = NOW(), duration_ms = $5
             WHERE id = $1 AND task_id = $2 AND worker_id = $3 AND status = 'running'
             "#,
         )
         .bind(attempt_id)
         .bind(task_id)
         .bind(worker_id)
+        .bind(AttemptStatus::Succeeded.as_str())
         .bind(duration_ms.max(0))
         .execute(&mut *tx)
         .await
@@ -581,23 +604,25 @@ impl PgBacktestRepository {
         sqlx::query(
             r#"
             INSERT INTO backtest_results (task_id, schema_version, payload)
-            VALUES ($1, 1, $2::jsonb)
+            VALUES ($1, $2, $3::jsonb)
             ON CONFLICT (task_id) DO UPDATE
             SET schema_version = EXCLUDED.schema_version,
                 payload = EXCLUDED.payload,
                 created_at = NOW()
             "#,
         )
-        .bind(task_id)
+        .bind(record.task_id)
+        .bind(record.schema_version)
         .bind(payload_json)
         .execute(&mut *tx)
         .await
         .map_err(|error| format!("保存回测结果失败：{error}"))?;
 
         let task_update = sqlx::query(
-            "UPDATE backtest_tasks SET status = 'succeeded', updated_at = NOW() WHERE id = $1 AND status = 'running'"
+            "UPDATE backtest_tasks SET status = $2, updated_at = NOW() WHERE id = $1 AND status = 'running'",
         )
         .bind(task_id)
+        .bind(task.status.as_str())
         .execute(&mut *tx)
         .await
         .map_err(|error| format!("更新任务成功状态失败：{error}"))?;
@@ -625,16 +650,33 @@ impl PgBacktestRepository {
             .await
             .map_err(|error| format!("开启失败结果事务失败：{error}"))?;
 
+        let current_status: String =
+            sqlx::query_scalar("SELECT status FROM backtest_tasks WHERE id = $1 FOR UPDATE")
+                .bind(task_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|error| format!("读取任务当前状态失败：{error}"))?
+                .ok_or_else(|| "回测任务不存在".to_string())?;
+        let mut task = BacktestTask {
+            id: task_id,
+            user_id: None,
+            status: TaskStatus::parse(&current_status)
+                .ok_or_else(|| format!("未知任务状态：{current_status}"))?,
+        };
+        task.transition(TaskStatus::Failed)
+            .map_err(|error| format!("任务状态转换失败：{error}"))?;
+
         let attempt = sqlx::query(
             r#"
             UPDATE backtest_task_attempts
-            SET status = 'failed', finished_at = NOW(), duration_ms = $4, error = $5
+            SET status = $4, finished_at = NOW(), duration_ms = $5, error = $6
             WHERE id = $1 AND task_id = $2 AND worker_id = $3 AND status = 'running'
             "#,
         )
         .bind(attempt_id)
         .bind(task_id)
         .bind(worker_id)
+        .bind(AttemptStatus::Failed.as_str())
         .bind(duration_ms)
         .bind(message)
         .execute(&mut *tx)
@@ -645,9 +687,10 @@ impl PgBacktestRepository {
         }
 
         let task_update = sqlx::query(
-            "UPDATE backtest_tasks SET status = 'failed', updated_at = NOW() WHERE id = $1 AND status = 'running'"
+            "UPDATE backtest_tasks SET status = $2, updated_at = NOW() WHERE id = $1 AND status = 'running'",
         )
         .bind(task_id)
+        .bind(task.status.as_str())
         .execute(&mut *tx)
         .await
         .map_err(|error| format!("更新任务失败状态失败：{error}"))?;
@@ -659,4 +702,4 @@ impl PgBacktestRepository {
             .await
             .map_err(|error| format!("提交失败结果事务失败：{error}"))
     }
-}
+}}
