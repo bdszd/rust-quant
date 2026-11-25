@@ -17,6 +17,12 @@ pub fn build_router(state: AppState) -> Router {
             "/api/backtests/{id}",
             get(handlers::backtests::get_backtest),
         )
+        .route("/api/auth/logout", axum::routing::post(handlers::auth::logout))
+        .route(
+            "/api/auth/logout-all",
+            axum::routing::post(handlers::auth::logout_all),
+        )
+        .route("/api/auth/me", get(handlers::auth::me))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
     // 不需要登录的接口。
@@ -29,6 +35,10 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/auth/login",
             axum::routing::post(handlers::auth::login),
+        )
+        .route(
+            "/api/auth/register",
+            axum::routing::post(handlers::auth::register),
         )
         .merge(protected_routes)
         .with_state(state)
