@@ -1,4 +1,7 @@
-use quant_backend::modules::backtest::infrastructure::postgres_repository::PgBacktestRepository;
+use quant_backend::modules::backtest::{
+    application::ports::BacktestRepository,
+    infrastructure::postgres_repository::PgBacktestRepository,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
