@@ -2,6 +2,7 @@ use std::{env, path::PathBuf, sync::Arc};
 
 use identity::auth::AuthenticationService;
 use tokio::sync::watch;
+use uuid::Uuid;
 
 use crate::{
     app::{router::build_router, state::AppState},
@@ -29,10 +30,19 @@ use crate::{
     workers::{backtest_worker::worker_loop, publisher::publisher_loop},
 };
 
-const WORKER_COUNT: usize = 2;
+const DEFAULT_WORKER_COUNT: usize = 2;
 
 /// 组装并启动 Backend 的 HTTP 服务、Publisher 和 Worker。
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let instance_id = env::var("RUST_QUANT_INSTANCE_ID")
+        .unwrap_or_else(|_| Uuid::new_v4().to_string());
+    if instance_id.trim().is_empty() {
+        return Err("RUST_QUANT_INSTANCE_ID 不能为空".into());
+    }
+
+    let worker_count = parse_usize_env("RUST_QUANT_WORKER_COUNT", DEFAULT_WORKER_COUNT)?;
+    let run_migrations = parse_bool_env("RUST_QUANT_RUN_MIGRATIONS", true)?;
+
     let data_dir = env::var_os("RUST_QUANT_DATA_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -51,7 +61,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .expect("必须设置 AMQP_ADDR，例如 amqp://rust_quant:rust_quant_dev@localhost:5673/%2f");
 
     let db = storage::connect(&database_url).await?;
-    sqlx::migrate!("./migrations").run(&db).await?;
+    if run_migrations {
+        // 本地开发默认自动迁移。多实例部署时应先由独立部署步骤执行迁移，
+        // 再将每个 Backend 实例的 RUST_QUANT_RUN_MIGRATIONS=false。
+        sqlx::migrate!("./migrations").run(&db).await?;
+    } else {
+        println!("实例 {instance_id} 跳过启动时数据库迁移");
+    }
 
     let repository = Arc::new(PgBacktestRepository::new(db.clone()));
     let publisher_repository: Arc<dyn OutboxRepository> = repository.clone();
@@ -66,7 +82,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     ));
     let datasets = Arc::new(DatasetApplicationService::new(dataset_catalog));
 
-    let metrics = Arc::new(Metrics::new(WORKER_COUNT));
+    let metrics = Arc::new(Metrics::new(worker_count));
     let worker_executor: Arc<dyn BacktestExecutor> =
         Arc::new(BacktestCoreExecutor::new(data_dir, metrics.clone()));
     let authentication = AuthenticationService::new(db.clone());
@@ -82,17 +98,19 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
     };
 
-    let mut worker_handles = Vec::with_capacity(WORKER_COUNT);
-    for worker_id in 0..WORKER_COUNT {
+    let mut worker_handles = Vec::with_capacity(worker_count);
+    for worker_id in 0..worker_count {
         let execution_service = worker_execution_service.clone();
         let executor = worker_executor.clone();
         let amqp_addr = amqp_addr.clone();
         let shutdown = shutdown_rx.clone();
         let metrics = metrics.clone();
+        let instance_id = instance_id.clone();
 
         worker_handles.push(tokio::spawn(async move {
             worker_loop(
                 worker_id,
+                instance_id,
                 execution_service,
                 executor,
                 amqp_addr,
@@ -113,7 +131,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;
-    println!("Backend listening on http://0.0.0.0:8000");
+    println!(
+        "Backend 实例 {instance_id} listening on http://0.0.0.0:8000，Worker 数量：{worker_count}"
+    );
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
@@ -135,6 +155,26 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("所有后台任务已退出，程序正常结束");
     Ok(())
+}
+
+fn parse_usize_env(name: &str, default: usize) -> Result<usize, Box<dyn std::error::Error>> {
+    match env::var(name) {
+        Ok(value) => Ok(value.parse()?),
+        Err(env::VarError::NotPresent) => Ok(default),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn parse_bool_env(name: &str, default: bool) -> Result<bool, Box<dyn std::error::Error>> {
+    match env::var(name) {
+        Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" => Ok(true),
+            "false" | "0" | "no" => Ok(false),
+            _ => Err(format!("{name} 必须是 true/false、1/0 或 yes/no").into()),
+        },
+        Err(env::VarError::NotPresent) => Ok(default),
+        Err(error) => Err(error.into()),
+    }
 }
 
 async fn shutdown_signal() {
