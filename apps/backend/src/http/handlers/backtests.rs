@@ -13,7 +13,10 @@ use crate::{
         middleware::authentication::CurrentUser,
     },
     modules::backtest::{
-        application::commands::CreateBacktestCommand,
+        application::{
+            commands::CreateBacktestCommand,
+            error::BacktestApplicationError,
+        },
         domain::{BacktestJobConfig, ExecutionMode, StrategyConfig},
     },
 };
@@ -129,13 +132,18 @@ pub async fn create_backtest(
             config,
         })
         .await
-        .map_err(|message| {
-            let status = if message.starts_with("找不到清洗后的数据集") {
-                StatusCode::NOT_FOUND
-            } else {
-                StatusCode::BAD_REQUEST
-            };
-            api_error(status, message)
+        .map_err(|error| match error {
+            BacktestApplicationError::InvalidConfig(message) => {
+                api_error(StatusCode::BAD_REQUEST, message)
+            }
+            BacktestApplicationError::DatasetNotFound(dataset) => api_error(
+                StatusCode::NOT_FOUND,
+                format!("找不到清洗后的数据集：{dataset}"),
+            ),
+            BacktestApplicationError::DatasetCatalog(message)
+            | BacktestApplicationError::Repository(message) => {
+                api_error(StatusCode::INTERNAL_SERVER_ERROR, message)
+            }
         })?;
 
     state.metrics.increment_tasks_accepted();
