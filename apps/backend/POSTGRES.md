@@ -63,7 +63,7 @@ cargo run -p quant-backend
 
 SQLx applies pending migrations at startup.
 
-## 6. Per-instance runtime settings
+## 5. Per-instance runtime settings
 
 Each Backend process has its own PostgreSQL connection pool, Publisher, HTTP listener, and configurable number of RabbitMQ Workers.
 
@@ -118,4 +118,4 @@ The SQL file under `crates/market-data/migrations` is currently not invoked by t
 
 ## 9. Existing PostgreSQL data
 
-The backtest migration creates the normalized task, job, Attempt, result, and Outbox tables. If it finds incompatible legacy `backtest_tasks`, `backtest_jobs`, or `backtest_outbox` tables, it renames them to `*_legacy_v1` and leaves their data intact; it does not attempt an automatic data conversion. It does not delete existing data or Docker volumes. No migration is run as part of this refactor work; migrations run only when the Backend application is started.
+The backtest migration creates the normalized task, job, Attempt, result, and Outbox tables. If it finds incompatible legacy `backtest_tasks`, `backtest_jobs`, or `backtest_outbox` tables, it renames them to `*_legacy_v1` and leaves their data intact; it does not attempt an automatic data conversion. It does not delete existing data or Docker volumes. No migration is run as part of this refactor work. Use the migration-only mode or the normal local-development startup to apply migrations explicitly.
