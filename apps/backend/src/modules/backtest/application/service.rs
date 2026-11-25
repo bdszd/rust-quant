@@ -8,7 +8,10 @@ use crate::modules::backtest::domain::{
 };
 
 use super::{
-    commands::CreateBacktestCommand, ports::BacktestRepository, queries::BacktestTaskView,
+    commands::CreateBacktestCommand,
+    error::BacktestApplicationError,
+    ports::BacktestRepository,
+    queries::BacktestTaskView,
 };
 
 /// 组织回测任务用例。
@@ -31,11 +34,17 @@ impl BacktestApplicationService {
     pub async fn create_task(
         &self,
         command: CreateBacktestCommand,
-    ) -> Result<BacktestTask, String> {
-        validate_config(&command.config)?;
+    ) -> Result<BacktestTask, BacktestApplicationError> {
+        validate_config(&command.config).map_err(BacktestApplicationError::InvalidConfig)?;
 
-        if !self.datasets.exists(&command.config.dataset)? {
-            return Err(format!("找不到清洗后的数据集：{}", command.config.dataset));
+        let dataset_exists = self
+            .datasets
+            .exists(&command.config.dataset)
+            .map_err(BacktestApplicationError::DatasetCatalog)?;
+        if !dataset_exists {
+            return Err(BacktestApplicationError::DatasetNotFound(
+                command.config.dataset.clone(),
+            ));
         }
 
         let task = BacktestTask {
@@ -50,16 +59,31 @@ impl BacktestApplicationService {
             config: command.config,
         };
 
-        self.repository.create_task(&task, &job).await?;
+        self.repository
+            .create_task(&task, &job)
+            .await
+            .map_err(BacktestApplicationError::Repository)?;
         Ok(task)
     }
 
-    pub async fn get_task(&self, task_id: Uuid) -> Result<Option<BacktestTaskView>, String> {
-        self.repository.find_task(task_id).await
+    pub async fn get_task(
+        &self,
+        task_id: Uuid,
+    ) -> Result<Option<BacktestTaskView>, BacktestApplicationError> {
+        self.repository
+            .find_task(task_id)
+            .await
+            .map_err(BacktestApplicationError::Repository)
     }
 
-    pub async fn list_tasks(&self, limit: i64) -> Result<Vec<BacktestTaskView>, String> {
-        self.repository.list_tasks(limit.clamp(1, 100)).await
+    pub async fn list_tasks(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<BacktestTaskView>, BacktestApplicationError> {
+        self.repository
+            .list_tasks(limit.clamp(1, 100))
+            .await
+            .map_err(BacktestApplicationError::Repository)
     }
 }
 
