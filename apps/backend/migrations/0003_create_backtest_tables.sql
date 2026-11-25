@@ -35,6 +35,7 @@ CREATE TABLE backtest_task_attempts (
         REFERENCES backtest_tasks(id) ON DELETE CASCADE,
     attempt_number INTEGER NOT NULL CHECK (attempt_number > 0),
     status VARCHAR(20) NOT NULL,
+    worker_id VARCHAR(200),
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     lease_expires_at TIMESTAMPTZ NOT NULL,
