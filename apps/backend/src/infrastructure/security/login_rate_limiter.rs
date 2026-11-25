@@ -70,7 +70,7 @@ impl LoginRateLimiter {
             }
         }
 
-        if CLEANUP_COUNTER.fetch_add(1, Ordering::Relaxed) % 100 == 0 {
+        if CLEANUP_COUNTER.fetch_add(1, Ordering::Relaxed).is_multiple_of(100) {
             sqlx::query(
                 "DELETE FROM login_rate_limits WHERE window_started_at < clock_timestamp() - INTERVAL '1 day'",
             )
