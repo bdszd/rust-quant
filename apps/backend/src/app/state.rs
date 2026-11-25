@@ -5,7 +5,7 @@ use crate::{
     },
     observability::metrics::Metrics,
 };
-use identity::auth::AuthenticationService;
+use identity::auth::{AuthenticationService, RegistrationService};
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -19,4 +19,5 @@ pub struct AppState {
 
     /// 负责登录、Token 验证和退出登录。
     pub authentication: AuthenticationService,
+    pub registration: RegistrationService,
 }
