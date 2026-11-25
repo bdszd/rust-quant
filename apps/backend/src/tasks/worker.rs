@@ -207,9 +207,19 @@ async fn process_delivery(
         Ok(outcome) => outcome,
         Err(error) => {
             eprintln!(
-                "认领任务 {}（事件 {}）失败：{error}，消息重新入队",
+                "认领任务 {}（事件 {}）失败：{error}",
                 message.task_id, message.event_id
             );
+            if error.contains("消息中的 job_id 与任务不匹配")
+                || error.contains("解析回测 Job 配置失败")
+            {
+                metrics.increment_reject_total();
+                return delivery
+                    .reject(BasicRejectOptions { requeue: false })
+                    .await
+                    .is_ok();
+            }
+
             return delivery
                 .nack(BasicNackOptions {
                     requeue: true,
