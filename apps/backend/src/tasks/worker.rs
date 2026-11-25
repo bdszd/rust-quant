@@ -291,9 +291,6 @@ async fn process_delivery(
     .await;
 
     let execution_duration_ms = duration_to_ms(execution_started.elapsed());
-    let _ = heartbeat_stop_tx.send(true);
-    let _ = heartbeat_handle.await;
-
     let persistence_result = match execution {
         Ok(Ok(result)) => match serde_json::to_value(&result) {
             Ok(payload) => {
@@ -345,6 +342,10 @@ async fn process_delivery(
             .await
         }
     };
+
+    // 持久化重试期间继续续租，避免数据库短暂不可用时被其他 Worker 抢占。
+    let _ = heartbeat_stop_tx.send(true);
+    let _ = heartbeat_handle.await;
 
     if let Err(error) = persistence_result {
         eprintln!("任务 {task_id} 的最终状态未能持久化：{error}，消息重新入队");
