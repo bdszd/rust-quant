@@ -16,7 +16,9 @@ use crate::{
                     OutboxRepository,
                 },
             },
-            infrastructure::{backtest_executor::BacktestCoreExecutor, postgres_repository::PgBacktestRepository},
+            infrastructure::{
+                backtest_executor::BacktestCoreExecutor, postgres_repository::PgBacktestRepository,
+            },
         },
         dataset::{
             application::DatasetApplicationService,
