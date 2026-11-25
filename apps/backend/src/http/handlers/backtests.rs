@@ -163,10 +163,11 @@ pub async fn create_backtest(
 /// GET /api/backtests：最近 50 条回测任务。
 pub async fn list_backtests(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
 ) -> Result<Json<Vec<BacktestTaskResponse>>, (StatusCode, Json<ApiError>)> {
     let tasks = state
         .backtest
-        .list_tasks(50)
+        .list_tasks(current_user.user_id, 50)
         .await
         .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
 
@@ -181,6 +182,7 @@ pub async fn list_backtests(
 /// GET /api/backtests/{id}
 pub async fn get_backtest(
     State(state): State<AppState>,
+    Extension(current_user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Json<BacktestTaskResponse>, (StatusCode, Json<ApiError>)> {
     let task_id = BacktestTaskResponse::parse_id(&id)
@@ -188,7 +190,7 @@ pub async fn get_backtest(
 
     let task = state
         .backtest
-        .get_task(task_id)
+        .get_task(task_id, current_user.user_id)
         .await
         .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
 
