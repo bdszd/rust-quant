@@ -1,4 +1,10 @@
-use axum::{Extension, Json, extract::State, http::StatusCode};
+use axum::{
+    Extension, Json,
+    extract::{ConnectInfo, State},
+    http::{HeaderName, StatusCode, header},
+    response::IntoResponse,
+};
+use std::net::SocketAddr;
 use identity::{
     auth::{AuthenticationError, LoginError, RegistrationError},
     user::{NewUser, User, UserRepository, UserStatus},
@@ -77,8 +83,33 @@ pub struct LogoutAllResponse {
 /// 用户登录接口。
 pub async fn login(
     State(state): State<AppState>,
+    client: Option<ConnectInfo<SocketAddr>>,
     Json(payload): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, (StatusCode, Json<ApiError>)> {
+) -> Result<axum::response::Response, (StatusCode, Json<ApiError>)> {
+    // 仅使用 TCP 连接的对端地址，不直接信任客户端可伪造的 X-Forwarded-For。
+    // 集成测试未经过真实 TCP Listener 时，使用 loopback 地址。
+    let client_ip = client
+        .map(|ConnectInfo(address)| address.ip())
+        .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+
+    let retry_after = state
+        .login_rate_limiter
+        .check_and_record(&payload.identifier, client_ip)
+        .await
+        .map_err(|_| api_error(StatusCode::SERVICE_UNAVAILABLE, "登录服务暂时不可用"))?;
+
+    if let Some(seconds) = retry_after {
+        let response = (
+            StatusCode::TOO_MANY_REQUESTS,
+            [(header::RETRY_AFTER, seconds.to_string())],
+            Json(ApiError {
+                message: "登录尝试过于频繁，请稍后再试".to_string(),
+            }),
+        )
+            .into_response();
+        return Ok(response);
+    }
+
     let issued_session = state
         .authentication
         .login(&payload.identifier, &payload.password)
@@ -90,12 +121,19 @@ pub async fn login(
             _ => api_error(StatusCode::INTERNAL_SERVER_ERROR, "登录服务暂时不可用"),
         })?;
 
+    state
+        .login_rate_limiter
+        .reset(&payload.identifier, client_ip)
+        .await
+        .map_err(|_| api_error(StatusCode::SERVICE_UNAVAILABLE, "登录服务暂时不可用"))?;
+
     Ok(Json(LoginResponse {
         user_id: issued_session.session.user_id,
         session_id: issued_session.session.id,
         token: issued_session.token,
         expires_at: issued_session.session.expires_at.to_rfc3339(),
-    }))
+    })
+    .into_response())
 }
 
 /// 用户注册接口。
