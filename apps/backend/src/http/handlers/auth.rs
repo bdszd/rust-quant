@@ -1,7 +1,7 @@
 use axum::{
     Extension, Json,
     extract::{ConnectInfo, State},
-    http::{HeaderName, StatusCode, header},
+    http::{StatusCode, header},
     response::IntoResponse,
 };
 use std::net::SocketAddr;
@@ -103,7 +103,7 @@ pub async fn login(
             StatusCode::TOO_MANY_REQUESTS,
             [(header::RETRY_AFTER, seconds.to_string())],
             Json(ApiError {
-                message: "登录尝试过于频繁，请稍后再试".to_string(),
+                error: "登录尝试过于频繁，请稍后再试".to_string(),
             }),
         )
             .into_response();
@@ -123,7 +123,7 @@ pub async fn login(
 
     state
         .login_rate_limiter
-        .reset(&payload.identifier, client_ip)
+        .reset(&payload.identifier)
         .await
         .map_err(|_| api_error(StatusCode::SERVICE_UNAVAILABLE, "登录服务暂时不可用"))?;
 
