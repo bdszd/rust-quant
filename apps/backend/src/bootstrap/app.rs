@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf, sync::Arc};
 
-use identity::auth::AuthenticationService;
+use identity::auth::{AuthenticationService, RegistrationService};
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -98,6 +98,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let worker_executor: Arc<dyn BacktestExecutor> =
         Arc::new(BacktestCoreExecutor::new(data_dir, metrics.clone()));
     let authentication = AuthenticationService::new(db.clone());
+    let registration = RegistrationService::new(db.clone());
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
@@ -139,6 +140,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         backtest,
         datasets,
         authentication,
+        registration,
     };
     let app = build_router(state);
 
