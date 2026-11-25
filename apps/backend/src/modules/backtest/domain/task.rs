@@ -55,16 +55,6 @@ impl TaskStatus {
     }
 }
 
-impl TaskStatus {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Queued => "queued",
-            Self::Running => "running",
-            Self::Succeeded => "succeeded",
-            Self::Failed => "failed",
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
