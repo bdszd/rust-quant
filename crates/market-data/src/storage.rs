@@ -28,12 +28,6 @@ impl PostgresRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
-    pub async fn migrate(&self) -> Result<(), StorageError> {
-        sqlx::migrate!("./migrations")
-            .run(&self.pool)
-            .await
-            .map_err(|e| StorageError::InvalidData(e.to_string()))
-    }
 }
 
 #[async_trait]
