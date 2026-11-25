@@ -122,8 +122,7 @@ async fn auth_http_endpoints_complete_the_login_lifecycle(pool: PgPool) {
     .await;
     assert_eq!(response.status(), StatusCode::OK);
     let login: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
-            .unwrap();
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     let token = login["token"].as_str().unwrap().to_string();
     assert!(!token.is_empty());
 
@@ -139,8 +138,7 @@ async fn auth_http_endpoints_complete_the_login_lifecycle(pool: PgPool) {
     .await;
     assert_eq!(response.status(), StatusCode::OK);
     let me: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
-            .unwrap();
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(me["id"], registered["id"]);
     assert_eq!(me["username"], "http_auth_user");
     assert!(me.get("password_hash").is_none());
@@ -181,18 +179,12 @@ async fn auth_http_endpoints_complete_the_login_lifecycle(pool: PgPool) {
     .await;
     assert_eq!(response.status(), StatusCode::OK);
     let second_token: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
-            .unwrap();
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
 
-    let response = send(
-        &app,
-        json_request("POST", "/api/auth/login", login_payload),
-    )
-    .await;
+    let response = send(&app, json_request("POST", "/api/auth/login", login_payload)).await;
     assert_eq!(response.status(), StatusCode::OK);
     let third_token: serde_json::Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
-            .unwrap();
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
 
     let response = send(
         &app,
