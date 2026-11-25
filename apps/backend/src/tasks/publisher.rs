@@ -17,7 +17,7 @@ use uuid::Uuid;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(500);
 const RETRY_DELAY: Duration = Duration::from_secs(2);
 const BATCH_SIZE: i64 = 32;
-const OUTBOX_LEASE_SECONDS: i64 = 30;
+const OUTBOX_LEASE_SECONDS: i64 = 300;
 
 /// 使用 Outbox Repository 领取事件并发布到 RabbitMQ。
 ///
