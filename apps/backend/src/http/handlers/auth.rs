@@ -1,4 +1,4 @@
-use axum::{Json, extract::State, http::StatusCode, Extension};
+use axum::{Extension, Json, extract::State, http::StatusCode};
 use identity::{
     auth::{AuthenticationError, LoginError, RegistrationError},
     user::{NewUser, User, UserRepository, UserStatus},
@@ -116,9 +116,7 @@ pub async fn register(
         .register(&new_user, &payload.password)
         .await
         .map_err(|error| match error {
-            RegistrationError::InvalidInput(message) => {
-                api_error(StatusCode::BAD_REQUEST, message)
-            }
+            RegistrationError::InvalidInput(message) => api_error(StatusCode::BAD_REQUEST, message)
             RegistrationError::UsernameAlreadyExists => {
                 api_error(StatusCode::CONFLICT, "用户名已被使用")
             }
