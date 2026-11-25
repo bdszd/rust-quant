@@ -2,7 +2,6 @@ use crate::{
     infrastructure::messaging::rabbitmq::{BACKTEST_QUEUE, connect_channel},
     modules::backtest::{
         application::ports::OutboxRepository,
-        infrastructure::postgres_repository::PgBacktestRepository,
     },
     observability::metrics::Metrics,
 };
@@ -25,7 +24,7 @@ const OUTBOX_LEASE_SECONDS: i64 = 300;
 /// RabbitMQ Confirm 成功后才标记 published；崩溃窗口仍可能产生重复消息，
 /// 因此 Worker 必须按 task 状态幂等处理。
 pub async fn publisher_loop(
-    repository: Arc<PgBacktestRepository>,
+    repository: Arc<dyn OutboxRepository>,
     amqp_addr: String,
     mut shutdown: watch::Receiver<bool>,
     metrics: Arc<Metrics>,
