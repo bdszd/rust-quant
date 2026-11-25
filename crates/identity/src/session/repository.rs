@@ -91,19 +91,22 @@ impl SessionRepository {
     ) -> Result<Option<Session>, SessionRepositoryError> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            UPDATE sessions
+            UPDATE sessions AS s
             SET last_used_at = NOW()
-            WHERE token_hash = $1
-              AND revoked_at IS NULL
-              AND expires_at > NOW()
+            FROM users AS u
+            WHERE s.user_id = u.id
+              AND s.token_hash = $1
+              AND s.revoked_at IS NULL
+              AND s.expires_at > NOW()
+              AND u.status = 'active'
             RETURNING
-                id,
-                user_id,
-                token_hash,
-                expires_at,
-                revoked_at,
-                created_at,
-                last_used_at
+                s.id,
+                s.user_id,
+                s.token_hash,
+                s.expires_at,
+                s.revoked_at,
+                s.created_at,
+                s.last_used_at
             "#,
         )
         .bind(token_hash)
