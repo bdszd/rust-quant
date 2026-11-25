@@ -124,7 +124,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 10. 创建应用状态。
     let state = AppState {
-        data_dir,
         db,
         metrics,
         backtest,
