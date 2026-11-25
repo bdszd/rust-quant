@@ -27,7 +27,7 @@ use crate::{
         },
     },
     observability::metrics::Metrics,
-    tasks::{publisher::publisher_loop, worker::worker_loop},
+    workers::{backtest_worker::worker_loop, publisher::publisher_loop},
 };
 
 const WORKER_COUNT: usize = 2;
