@@ -18,7 +18,10 @@ use lapin::{
 use serde::Deserialize;
 use std::{
     cmp,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 use tokio::sync::watch;
@@ -62,13 +65,14 @@ fn duration_to_ms(duration: Duration) -> i64 {
 /// 消息只携带 task/job 标识，真正的执行配置从 PostgreSQL 读取。
 pub async fn worker_loop(
     worker_id: usize,
+    instance_id: String,
     repository: Arc<BacktestExecutionService>,
     executor: Arc<dyn BacktestExecutor>,
     amqp_addr: String,
     mut shutdown: watch::Receiver<bool>,
     metrics: Arc<Metrics>,
 ) {
-    let consumer_tag = format!("backtest-worker-{worker_id}");
+    let consumer_tag = format!("backtest-{instance_id}-worker-{worker_id}");
     println!("Worker {worker_id} 已启动");
 
     loop {
@@ -139,6 +143,7 @@ pub async fn worker_loop(
                                 &executor,
                                 delivery,
                                 worker_id,
+                                &instance_id,
                                 metrics.clone(),
                             ).await {
                                 break;
@@ -175,6 +180,7 @@ async fn process_delivery(
     executor: &Arc<dyn BacktestExecutor>,
     delivery: Delivery,
     worker_number: usize,
+    instance_id: &str,
     metrics: Arc<Metrics>,
 ) -> bool {
     metrics.increment_consume_total();
@@ -191,7 +197,7 @@ async fn process_delivery(
         }
     };
 
-    let worker_id = format!("worker-{worker_number}-{}", Uuid::new_v4());
+    let worker_id = format!("{instance_id}-worker-{worker_number}-{}", Uuid::new_v4());
     let claim_started = Instant::now();
 
     let claim_outcome = match repository
@@ -276,6 +282,8 @@ async fn process_delivery(
     let heartbeat_repository = repository.clone();
     let heartbeat_attempt_id = claimed.attempt.id;
     let heartbeat_worker_id = worker_id.clone();
+    let lease_lost = Arc::new(AtomicBool::new(false));
+    let heartbeat_lease_lost = lease_lost.clone();
     let heartbeat_handle = tokio::spawn(async move {
         let mut interval = tokio::time::interval(HEARTBEAT_INTERVAL);
         interval.tick().await;
@@ -297,6 +305,7 @@ async fn process_delivery(
                         Ok(true) => {}
                         Ok(false) => {
                             eprintln!("Attempt {heartbeat_attempt_id} 的租约所有权已失效");
+                            heartbeat_lease_lost.store(true, Ordering::Release);
                             break;
                         }
                         Err(error) => {
@@ -318,6 +327,23 @@ async fn process_delivery(
         tokio::task::spawn_blocking(move || execution_executor.execute(task_id, config)).await;
 
     let execution_duration_ms = duration_to_ms(execution_started.elapsed());
+
+    // 心跳明确报告租约已失效时，不再尝试写入结果；消息重新入队，
+    // 由当前租约持有者完成任务。spawn_blocking 本身无法被强制中断。
+    if lease_lost.load(Ordering::Acquire) {
+        let _ = heartbeat_stop_tx.send(true);
+        let _ = heartbeat_handle.await;
+        metrics.worker_finished();
+        eprintln!("任务 {task_id} 的执行租约已失效，放弃本次结果并重新入队");
+        return delivery
+            .nack(BasicNackOptions {
+                requeue: true,
+                ..BasicNackOptions::default()
+            })
+            .await
+            .is_ok();
+    }
+
     let task_succeeded = matches!(&execution, Ok(Ok(_)));
     let persistence_result = match execution {
         Ok(Ok(result)) => match serde_json::to_value(&result) {
