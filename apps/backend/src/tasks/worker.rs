@@ -1,9 +1,12 @@
 use crate::{
     infrastructure::messaging::rabbitmq::{BACKTEST_QUEUE, connect_channel},
-    modules::backtest::infrastructure::postgres_repository::{
-        ClaimExecutionOutcome, PgBacktestRepository,
+    modules::backtest::{
+        application::{
+            execution::BacktestExecutionService,
+            ports::ClaimExecutionOutcome,
+        },
+        service::execute_config,
     },
-    modules::backtest::service::execute_config,
     observability::metrics::Metrics,
 };
 use futures_util::StreamExt;
@@ -63,7 +66,7 @@ fn duration_to_ms(duration: Duration) -> i64 {
 /// 消息只携带 task/job 标识，真正的执行配置从 PostgreSQL 读取。
 pub async fn worker_loop(
     worker_id: usize,
-    repository: Arc<PgBacktestRepository>,
+    repository: Arc<BacktestExecutionService>,
     data_dir: PathBuf,
     amqp_addr: String,
     mut shutdown: watch::Receiver<bool>,
@@ -172,7 +175,7 @@ pub async fn worker_loop(
 }
 
 async fn process_delivery(
-    repository: &Arc<PgBacktestRepository>,
+    repository: &Arc<BacktestExecutionService>,
     data_dir: &Path,
     delivery: Delivery,
     worker_number: usize,
@@ -196,7 +199,7 @@ async fn process_delivery(
     let claim_started = Instant::now();
 
     let claim_outcome = match repository
-        .claim_execution(
+        .claim(
             message.task_id,
             message.job_id,
             &worker_id,
@@ -288,7 +291,7 @@ async fn process_delivery(
                 }
                 _ = interval.tick() => {
                     match heartbeat_repository
-                        .heartbeat_attempt(
+                        .heartbeat(
                             heartbeat_attempt_id,
                             &heartbeat_worker_id,
                             EXECUTION_LEASE_SECONDS,
@@ -416,7 +419,7 @@ async fn process_delivery(
 }
 
 async fn persist_success(
-    repository: &PgBacktestRepository,
+    repository: &BacktestExecutionService,
     attempt_id: Uuid,
     task_id: Uuid,
     worker_id: &str,
