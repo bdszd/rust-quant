@@ -295,24 +295,8 @@ async fn process_delivery(
     let _ = heartbeat_handle.await;
 
     let persistence_result = match execution {
-        Ok(Ok(result)) => {
-            let payload = match serde_json::to_value(&result) {
-                Ok(payload) => payload,
-                Err(error) => {
-                    let message = format!("序列化回测结果失败：{error}");
-                    persist_failure(
-                        repository,
-                        attempt_id,
-                        task_id,
-                        &worker_id,
-                        &message,
-                        Some(execution_duration_ms),
-                    )
-                    .await
-                }
-            };
-
-            if let Ok(payload) = payload {
+        Ok(Ok(result)) => match serde_json::to_value(&result) {
+            Ok(payload) => {
                 persist_success(
                     repository,
                     attempt_id,
@@ -322,10 +306,20 @@ async fn process_delivery(
                     execution_duration_ms,
                 )
                 .await
-            } else {
-                payload
             }
-        }
+            Err(error) => {
+                let message = format!("序列化回测结果失败：{error}");
+                persist_failure(
+                    repository,
+                    attempt_id,
+                    task_id,
+                    &worker_id,
+                    &message,
+                    Some(execution_duration_ms),
+                )
+                .await
+            }
+        },
         Ok(Err(message)) => {
             eprintln!("任务 {task_id} 执行失败：{message}");
             persist_failure(
