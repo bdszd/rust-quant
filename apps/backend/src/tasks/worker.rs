@@ -392,6 +392,9 @@ async fn persist_success(
             .await
         {
             Ok(()) => return Ok(()),
+            Err(error) if error.contains("不再拥有该执行 Attempt") => {
+                return Err(error);
+            }
             Err(error) => {
                 eprintln!("保存任务 {task_id} 成功结果失败：{error}，稍后重试");
                 retry.wait().await;
@@ -415,6 +418,9 @@ async fn persist_failure(
             .await
         {
             Ok(()) => return Ok(()),
+            Err(error) if error.contains("不再拥有该执行 Attempt") => {
+                return Err(error);
+            }
             Err(error) => {
                 eprintln!("保存任务 {task_id} 失败状态失败：{error}，稍后重试");
                 retry.wait().await;
