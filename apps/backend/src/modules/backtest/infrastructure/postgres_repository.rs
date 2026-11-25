@@ -337,6 +337,13 @@ pub struct ClaimedBacktestJob {
     pub config: crate::modules::backtest::domain::BacktestJobConfig,
 }
 
+#[derive(Debug)]
+pub enum ClaimExecutionOutcome {
+    Claimed(ClaimedBacktestJob),
+    AlreadyFinished,
+    LeaseHeld,
+}
+
 impl PgBacktestRepository {
     /// 原子认领任务并创建一次 Attempt。
     ///
@@ -347,7 +354,7 @@ impl PgBacktestRepository {
         job_id: Uuid,
         worker_id: &str,
         lease_seconds: i64,
-    ) -> Result<Option<ClaimedBacktestJob>, String> {
+    ) -> Result<ClaimExecutionOutcome, String> {
         let mut tx = self
             .pool
             .begin()
@@ -364,7 +371,7 @@ impl PgBacktestRepository {
             tx.commit()
                 .await
                 .map_err(|error| format!("提交空认领事务失败：{error}"))?;
-            return Ok(None);
+            return Ok(ClaimExecutionOutcome::AlreadyFinished);
         };
 
         let status: String = task
@@ -483,7 +490,7 @@ impl PgBacktestRepository {
             .await
             .map_err(|error| format!("提交任务认领事务失败：{error}"))?;
 
-        Ok(Some(ClaimedBacktestJob {
+        Ok(ClaimExecutionOutcome::Claimed(ClaimedBacktestJob {
             task_id,
             attempt_id,
             attempt_number,
