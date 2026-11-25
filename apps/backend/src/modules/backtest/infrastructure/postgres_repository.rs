@@ -551,7 +551,7 @@ impl PgBacktestRepository {
         sqlx::query(
             r#"
             INSERT INTO backtest_results (task_id, schema_version, payload)
-            VALUES ($1, 1, $2)
+            VALUES ($1, 1, $2::jsonb)
             ON CONFLICT (task_id) DO UPDATE
             SET schema_version = EXCLUDED.schema_version,
                 payload = EXCLUDED.payload,
@@ -559,7 +559,7 @@ impl PgBacktestRepository {
             "#,
         )
         .bind(task_id)
-        .bind(payload)
+        .bind(payload_json)
         .execute(&mut *tx)
         .await
         .map_err(|error| format!("保存回测结果失败：{error}"))?;
