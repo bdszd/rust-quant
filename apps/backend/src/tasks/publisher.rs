@@ -1,8 +1,6 @@
 use crate::{
     infrastructure::messaging::rabbitmq::{BACKTEST_QUEUE, connect_channel},
-    modules::backtest::{
-        application::ports::OutboxRepository,
-    },
+    modules::backtest::application::ports::OutboxRepository,
     observability::metrics::Metrics,
 };
 use lapin::{

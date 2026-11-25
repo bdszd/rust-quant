@@ -1,10 +1,7 @@
 use crate::{
     infrastructure::messaging::rabbitmq::{BACKTEST_QUEUE, connect_channel},
     modules::backtest::{
-        application::{
-            execution::BacktestExecutionService,
-            ports::ClaimExecutionOutcome,
-        },
+        application::{execution::BacktestExecutionService, ports::ClaimExecutionOutcome},
         service::execute_config,
     },
     observability::metrics::Metrics,

@@ -4,9 +4,7 @@ use uuid::Uuid;
 
 use super::queries::BacktestTaskView;
 use crate::modules::backtest::domain::{
-    BacktestJob, BacktestTask,
-    attempt::BacktestAttempt,
-    job::BacktestJobConfig,
+    BacktestJob, BacktestTask, attempt::BacktestAttempt, job::BacktestJobConfig,
 };
 
 /// 应用层需要的持久化能力。

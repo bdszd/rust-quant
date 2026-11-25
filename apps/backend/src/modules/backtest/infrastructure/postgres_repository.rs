@@ -6,9 +6,9 @@ use uuid::Uuid;
 use crate::modules::backtest::{
     application::{
         ports::{
-                BacktestExecutionRepository, BacktestRepository, ClaimExecutionOutcome,
-                ClaimedBacktestJob, OutboxRepository, PendingOutboxEvent,
-            },
+            BacktestExecutionRepository, BacktestRepository, ClaimExecutionOutcome,
+            ClaimedBacktestJob, OutboxRepository, PendingOutboxEvent,
+        },
         queries::BacktestTaskView,
     },
     domain::{
@@ -690,7 +690,6 @@ impl PgBacktestRepository {
     }
 }
 
-
 #[async_trait]
 impl BacktestExecutionRepository for PgBacktestRepository {
     async fn claim_execution(
@@ -700,8 +699,7 @@ impl BacktestExecutionRepository for PgBacktestRepository {
         worker_id: &str,
         lease_seconds: i64,
     ) -> Result<ClaimExecutionOutcome, String> {
-        PgBacktestRepository::claim_execution(self, task_id, job_id, worker_id, lease_seconds)
-            .await
+        PgBacktestRepository::claim_execution(self, task_id, job_id, worker_id, lease_seconds).await
     }
 
     async fn heartbeat_attempt(
