@@ -10,6 +10,7 @@ use identity::{
 };
 use quant_backend::{
     app::{router::build_router, state::AppState},
+    infrastructure::security::login_rate_limiter::LoginRateLimiter,
     modules::{
         backtest::{
             application::BacktestApplicationService,
@@ -20,7 +21,6 @@ use quant_backend::{
             infrastructure::filesystem_catalog::FilesystemDatasetCatalog,
         },
     },
-    infrastructure::security::login_rate_limiter::LoginRateLimiter,
     observability::metrics::Metrics,
 };
 use sqlx::PgPool;
