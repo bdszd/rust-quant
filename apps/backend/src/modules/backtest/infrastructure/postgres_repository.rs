@@ -95,7 +95,7 @@ impl BacktestRepository for PgBacktestRepository {
         Ok(())
     }
 
-    async fn find_task(&self, task_id: Uuid) -> Result<Option<BacktestTaskView>, String> {
+    async fn find_task(&self, task_id: Uuid, user_id: Uuid) -> Result<Option<BacktestTaskView>, String> {
         let row = sqlx::query(
             r#"
             SELECT
@@ -115,10 +115,11 @@ impl BacktestRepository for PgBacktestRepository {
                 ORDER BY attempt_number DESC
                 LIMIT 1
             ) latest_attempt ON TRUE
-            WHERE t.id = $1
+            WHERE t.id = $1 AND t.user_id = $2
             "#,
         )
         .bind(task_id)
+        .bind(user_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(|error| format!("查询回测任务失败：{error}"))?;
@@ -126,7 +127,7 @@ impl BacktestRepository for PgBacktestRepository {
         row.map(map_task_view).transpose()
     }
 
-    async fn list_tasks(&self, limit: i64) -> Result<Vec<BacktestTaskView>, String> {
+    async fn list_tasks(&self, user_id: Uuid, limit: i64) -> Result<Vec<BacktestTaskView>, String> {
         let rows = sqlx::query(
             r#"
             SELECT
@@ -146,10 +147,12 @@ impl BacktestRepository for PgBacktestRepository {
                 ORDER BY attempt_number DESC
                 LIMIT 1
             ) latest_attempt ON TRUE
+            WHERE t.user_id = $1
             ORDER BY t.created_at DESC
-            LIMIT $1
+            LIMIT $2
             "#,
         )
+        .bind(user_id)
         .bind(limit.clamp(1, 100))
         .fetch_all(&self.pool)
         .await
