@@ -75,8 +75,8 @@ fn calculate_atr(bars: &[Bar], period: usize) -> Result<Vec<Option<f64>>, Indica
     // TR 的索引范围是 1..=period。
     let mut initial_sum = 0.0;
 
-    for index in 1..=period {
-        let true_range = tr_values[index].expect("该位置应该已经计算出 TR");
+    for (index, true_range) in tr_values.iter().enumerate().take(period + 1).skip(1) {
+        let true_range = (*true_range).expect("该位置应该已经计算出 TR");
         initial_sum += true_range;
 
         if !initial_sum.is_finite() {
