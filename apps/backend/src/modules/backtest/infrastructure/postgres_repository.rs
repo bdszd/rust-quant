@@ -317,3 +317,275 @@ impl OutboxRepository for PgBacktestRepository {
         Ok(())
     }
 }
+
+
+/// Worker 成功认领任务后获得的不可变执行配置。
+#[derive(Debug, Clone)]
+pub struct ClaimedBacktestJob {
+    pub task_id: Uuid,
+    pub attempt_id: Uuid,
+    pub attempt_number: i32,
+    pub config: crate::modules::backtest::domain::BacktestJobConfig,
+}
+
+impl PgBacktestRepository {
+    /// 原子认领任务并创建一次 Attempt。
+    ///
+    /// queued 任务可以首次认领；running 任务只有在上一次租约过期后才允许接管。
+    pub async fn claim_execution(
+        &self,
+        task_id: Uuid,
+        job_id: Uuid,
+        worker_id: &str,
+        lease_seconds: i64,
+    ) -> Result<Option<ClaimedBacktestJob>, String> {
+        let mut tx = self.pool.begin().await
+            .map_err(|error| format!("开启任务认领事务失败：{error}"))?;
+
+        let task = sqlx::query(
+            "SELECT status FROM backtest_tasks WHERE id = $1 FOR UPDATE"
+        )
+        .bind(task_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|error| format!("锁定回测任务失败：{error}"))?;
+
+        let Some(task) = task else {
+            tx.commit().await.map_err(|error| format!("提交空认领事务失败：{error}"))?;
+            return Ok(None);
+        };
+
+        let status: String = task.try_get("status")
+            .map_err(|error| format!("读取任务状态失败：{error}"))?;
+
+        if status == "succeeded" || status == "failed" {
+            tx.commit().await.map_err(|error| format!("提交重复任务事务失败：{error}"))?;
+            return Ok(None);
+        }
+
+        if status == "running" {
+            let active = sqlx::query(
+                r#"
+                SELECT id, lease_expires_at <= NOW() AS expired
+                FROM backtest_task_attempts
+                WHERE task_id = $1 AND status = 'running'
+                ORDER BY attempt_number DESC
+                LIMIT 1
+                FOR UPDATE
+                "#
+            )
+            .bind(task_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|error| format!("检查旧执行租约失败：{error}"))?;
+
+            let Some(active) = active else {
+                tx.commit().await.map_err(|error| format!("提交无活动执行记录事务失败：{error}"))?;
+                return Ok(None);
+            };
+
+            let expired: bool = active.try_get("expired")
+                .map_err(|error| format!("读取租约状态失败：{error}"))?;
+            if !expired {
+                tx.commit().await.map_err(|error| format!("提交未过期租约事务失败：{error}"))?;
+                return Ok(None);
+            }
+
+            let old_attempt_id: Uuid = active.try_get("id")
+                .map_err(|error| format!("读取旧 Attempt ID 失败：{error}"))?;
+            sqlx::query(
+                r#"
+                UPDATE backtest_task_attempts
+                SET status = 'interrupted', finished_at = NOW(),
+                    error = 'worker lease expired'
+                WHERE id = $1 AND status = 'running'
+                "#
+            )
+            .bind(old_attempt_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| format!("标记过期 Attempt 失败：{error}"))?;
+        } else if status != "queued" {
+            tx.commit().await.map_err(|error| format!("提交未知状态事务失败：{error}"))?;
+            return Ok(None);
+        }
+
+        let config_json: String = sqlx::query_scalar(
+            "SELECT config::text FROM backtest_jobs WHERE id = $1 AND task_id = $2"
+        )
+        .bind(job_id)
+        .bind(task_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|error| format!("读取回测 Job 配置失败：{error}"))?
+        .ok_or_else(|| "消息中的 job_id 与任务不匹配".to_string())?;
+
+        let config = serde_json::from_str(&config_json)
+            .map_err(|error| format!("解析回测 Job 配置失败：{error}"))?;
+
+        let attempt_number: i32 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(attempt_number), 0) + 1 FROM backtest_task_attempts WHERE task_id = $1"
+        )
+        .bind(task_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|error| format!("计算 Attempt 序号失败：{error}"))?;
+
+        let attempt_id = Uuid::new_v4();
+        sqlx::query(
+            r#"
+            INSERT INTO backtest_task_attempts
+                (id, task_id, attempt_number, status, worker_id, lease_expires_at)
+            VALUES ($1, $2, $3, 'running', $4, NOW() + ($5 * INTERVAL '1 second'))
+            "#
+        )
+        .bind(attempt_id)
+        .bind(task_id)
+        .bind(attempt_number)
+        .bind(worker_id)
+        .bind(lease_seconds.clamp(10, 3600))
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| format!("创建执行 Attempt 失败：{error}"))?;
+
+        sqlx::query(
+            "UPDATE backtest_tasks SET status = 'running', updated_at = NOW() WHERE id = $1"
+        )
+        .bind(task_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| format!("更新任务为 running 失败：{error}"))?;
+
+        tx.commit().await.map_err(|error| format!("提交任务认领事务失败：{error}"))?;
+
+        Ok(Some(ClaimedBacktestJob {
+            task_id,
+            attempt_id,
+            attempt_number,
+            config,
+        }))
+    }
+
+    /// 延长当前 Worker 持有的执行租约。
+    pub async fn heartbeat_attempt(
+        &self,
+        attempt_id: Uuid,
+        worker_id: &str,
+        lease_seconds: i64,
+    ) -> Result<bool, String> {
+        let result = sqlx::query(
+            r#"
+            UPDATE backtest_task_attempts
+            SET heartbeat_at = NOW(),
+                lease_expires_at = NOW() + ($3 * INTERVAL '1 second')
+            WHERE id = $1 AND worker_id = $2 AND status = 'running'
+            "#
+        )
+        .bind(attempt_id)
+        .bind(worker_id)
+        .bind(lease_seconds.clamp(10, 3600))
+        .execute(&self.pool)
+        .await
+        .map_err(|error| format!("更新执行心跳失败：{error}"))?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// 一个事务内保存结果、结束 Attempt 并结束 Task。
+    pub async fn complete_success(
+        &self,
+        attempt_id: Uuid,
+        task_id: Uuid,
+        worker_id: &str,
+        payload: &Value,
+        duration_ms: i64,
+    ) -> Result<(), String> {
+        let mut tx = self.pool.begin().await
+            .map_err(|error| format!("开启成功结果事务失败：{error}"))?;
+
+        let attempt = sqlx::query(
+            r#"
+            UPDATE backtest_task_attempts
+            SET status = 'succeeded', finished_at = NOW(), duration_ms = $4
+            WHERE id = $1 AND task_id = $2 AND worker_id = $3 AND status = 'running'
+            "#
+        )
+        .bind(attempt_id)
+        .bind(task_id)
+        .bind(worker_id)
+        .bind(duration_ms.max(0))
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| format!("更新成功 Attempt 失败：{error}"))?;
+        if attempt.rows_affected() != 1 {
+            return Err("当前 Worker 已不再拥有该执行 Attempt".to_string());
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO backtest_results (task_id, schema_version, payload)
+            VALUES ($1, 1, $2)
+            ON CONFLICT (task_id) DO UPDATE
+            SET schema_version = EXCLUDED.schema_version,
+                payload = EXCLUDED.payload,
+                created_at = NOW()
+            "#
+        )
+        .bind(task_id)
+        .bind(payload)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| format!("保存回测结果失败：{error}"))?;
+
+        sqlx::query(
+            "UPDATE backtest_tasks SET status = 'succeeded', updated_at = NOW() WHERE id = $1 AND status = 'running'"
+        )
+        .bind(task_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| format!("更新任务成功状态失败：{error}"))?;
+
+        tx.commit().await.map_err(|error| format!("提交成功结果事务失败：{error}"))
+    }
+
+    /// 一个事务内结束 Attempt 并记录 Task 失败状态。
+    pub async fn complete_failure(
+        &self,
+        attempt_id: Uuid,
+        task_id: Uuid,
+        worker_id: &str,
+        message: &str,
+        duration_ms: Option<i64>,
+    ) -> Result<(), String> {
+        let mut tx = self.pool.begin().await
+            .map_err(|error| format!("开启失败结果事务失败：{error}"))?;
+
+        let attempt = sqlx::query(
+            r#"
+            UPDATE backtest_task_attempts
+            SET status = 'failed', finished_at = NOW(), duration_ms = $4, error = $5
+            WHERE id = $1 AND task_id = $2 AND worker_id = $3 AND status = 'running'
+            "#
+        )
+        .bind(attempt_id)
+        .bind(task_id)
+        .bind(worker_id)
+        .bind(duration_ms)
+        .bind(message)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| format!("更新失败 Attempt 失败：{error}"))?;
+        if attempt.rows_affected() != 1 {
+            return Err("当前 Worker 已不再拥有该执行 Attempt".to_string());
+        }
+
+        sqlx::query(
+            "UPDATE backtest_tasks SET status = 'failed', updated_at = NOW() WHERE id = $1 AND status = 'running'"
+        )
+        .bind(task_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| format!("更新任务失败状态失败：{error}"))?;
+
+        tx.commit().await.map_err(|error| format!("提交失败结果事务失败：{error}"))
+    }
+}
