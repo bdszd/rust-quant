@@ -6,7 +6,11 @@ use crate::observability::metrics::Metrics;
 use backtest_core::{
     BacktestConfig, Bar, BuyAndHoldStrategy, SmaCrossStrategy, Strategy, load_data, run,
 };
-use std::{path::{Path as FsPath, PathBuf}, sync::Arc, time::Instant};
+use std::{
+    path::{Path as FsPath, PathBuf},
+    sync::Arc,
+    time::Instant,
+};
 use uuid::Uuid;
 
 pub fn validate_bars(bars: &[Bar]) -> Result<(), String> {
@@ -105,7 +109,6 @@ pub fn execute_config(
         &result,
     ))
 }
-
 
 /// Backtest Core 的执行适配器。
 ///
