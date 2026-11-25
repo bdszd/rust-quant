@@ -164,7 +164,7 @@ mod tests {
     use std::{
         error::Error,
         fs,
-        path::PathBuf,
+        path::{Path, PathBuf},
         sync::atomic::{AtomicUsize, Ordering},
     };
 
@@ -181,7 +181,7 @@ mod tests {
         Ok(path)
     }
 
-    fn path_string(path: &PathBuf) -> String {
+    fn path_string(path: &Path) -> String {
         path.to_string_lossy().into_owned()
     }
 
