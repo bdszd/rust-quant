@@ -3,6 +3,7 @@ members = [
     "crates/backtest-core",
     "crates/trading-core",
     "crates/market-data",
+    "crates/identity",
     "apps/backend",
 ]
 resolver = "3"

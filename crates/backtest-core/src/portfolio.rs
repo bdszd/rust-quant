@@ -345,7 +345,6 @@ mod tests {
         assert!((second.drawdown - (200.0 / 10_100.0)).abs() < 1e-12);
     }
 
-
     #[test]
     fn multi_asset_snapshot_keeps_realized_pnl_after_position_is_closed() {
         let mut portfolio = MultiAssetPortfolio::new(10_000.0);
@@ -376,10 +375,7 @@ mod tests {
             .apply_fill(&fill("BBB", Side::Buy, 100, 20.0))
             .unwrap();
 
-        let first_closes = BTreeMap::from([
-            ("AAA".to_string(), 11.0),
-            ("BBB".to_string(), 21.0),
-        ]);
+        let first_closes = BTreeMap::from([("AAA".to_string(), 11.0), ("BBB".to_string(), 21.0)]);
         let first = portfolio.snapshot("2025-01-02", &first_closes);
         assert_eq!(first.positions.len(), 2);
         assert_eq!(first.market_value, 3_200.0);

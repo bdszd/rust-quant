@@ -1,5 +1,5 @@
 use crate::{
-    metrics::Metrics,
+    observability::metrics::Metrics,
     tasks::{ApiBacktestResult, BacktestJob, BacktestTask, TaskStatus},
 };
 

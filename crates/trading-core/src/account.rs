@@ -97,8 +97,7 @@ impl Account {
                 position.quantity = new_quantity;
                 position.bought_today = new_bought_today;
 
-                position.average_cost =
-                    (old_cost + total_cost) / position.quantity as f64;
+                position.average_cost = (old_cost + total_cost) / position.quantity as f64;
 
                 position.last_price = Some(fill.price);
 
@@ -109,9 +108,7 @@ impl Account {
                 let position = self
                     .positions
                     .get_mut(&fill.symbol)
-                    .ok_or_else(|| {
-                        AccountError::PositionNotFound(fill.symbol.clone())
-                    })?;
+                    .ok_or_else(|| AccountError::PositionNotFound(fill.symbol.clone()))?;
 
                 if fill.quantity == 0 || fill.quantity > position.sellable_quantity {
                     return Err(AccountError::InsufficientSellableQuantity {
@@ -127,8 +124,7 @@ impl Account {
                     return Err(AccountError::InvalidAmount);
                 }
 
-                position.realized_pnl +=
-                    proceeds - position.average_cost * fill.quantity as f64;
+                position.realized_pnl += proceeds - position.average_cost * fill.quantity as f64;
 
                 position.quantity -= fill.quantity;
                 position.sellable_quantity -= fill.quantity;
@@ -151,13 +147,7 @@ impl Account {
 mod tests {
     use super::*;
 
-    fn fill(
-        side: Side,
-        date: &str,
-        quantity: u64,
-        price: f64,
-        fee: f64,
-    ) -> Fill {
+    fn fill(side: Side, date: &str, quantity: u64, price: f64, fee: f64) -> Fill {
         Fill {
             order_id: 1,
             date: date.into(),
@@ -183,8 +173,7 @@ mod tests {
         assert_eq!(position.bought_today, 100);
         assert_eq!(account.cash(), 8_995.0);
 
-        let same_day_sell =
-            fill(Side::Sell, "2025-01-02", 100, 11.0, 0.0);
+        let same_day_sell = fill(Side::Sell, "2025-01-02", 100, 11.0, 0.0);
 
         assert!(matches!(
             account.apply_fill(&same_day_sell),
@@ -193,8 +182,7 @@ mod tests {
 
         account.begin_day();
 
-        let next_day_sell =
-            fill(Side::Sell, "2025-01-03", 100, 11.0, 0.0);
+        let next_day_sell = fill(Side::Sell, "2025-01-03", 100, 11.0, 0.0);
 
         account.apply_fill(&next_day_sell).unwrap();
 

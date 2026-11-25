@@ -9,25 +9,40 @@ pub struct Symbol(String);
 impl Symbol {
     pub fn new(value: impl Into<String>) -> Result<Self, String> {
         let value = value.into().trim().to_ascii_uppercase();
-        if value.is_empty() || value.len() > 20
-            || !value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.')
+        if value.is_empty()
+            || value.len() > 20
+            || !value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'.')
         {
             return Err(format!("非法股票代码：{value}"));
         }
         Ok(Self(value))
     }
-    pub fn as_str(&self) -> &str { &self.0 }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 impl fmt::Display for Symbol {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(&self.0) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PriceUnit { Cny }
+pub enum PriceUnit {
+    Cny,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VolumeUnit { Lots, Shares }
+pub enum VolumeUnit {
+    Lots,
+    Shares,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AmountUnit { ThousandCny, Cny }
+pub enum AmountUnit {
+    ThousandCny,
+    Cny,
+}
 
 #[derive(Debug, Clone)]
 pub struct RawDailyBar {
