@@ -83,14 +83,12 @@ pub struct LogoutAllResponse {
 /// 用户登录接口。
 pub async fn login(
     State(state): State<AppState>,
-    client: Option<ConnectInfo<SocketAddr>>,
+    ConnectInfo(client): ConnectInfo<SocketAddr>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<axum::response::Response, (StatusCode, Json<ApiError>)> {
     // 仅使用 TCP 连接的对端地址，不直接信任客户端可伪造的 X-Forwarded-For。
     // 集成测试未经过真实 TCP Listener 时，使用 loopback 地址。
-    let client_ip = client
-        .map(|ConnectInfo(address)| address.ip())
-        .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+    let client_ip = client.ip();
 
     let retry_after = state
         .login_rate_limiter
