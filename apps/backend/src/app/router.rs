@@ -17,7 +17,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/backtests/{id}",
             get(handlers::backtests::get_backtest),
         )
-        .route("/api/auth/logout", axum::routing::post(handlers::auth::logout))
+        .route(
+            "/api/auth/logout",
+            axum::routing::post(handlers::auth::logout),
+        )
         .route(
             "/api/auth/logout-all",
             axum::routing::post(handlers::auth::logout_all),
