@@ -79,14 +79,8 @@ impl LoginRateLimiter {
     }
 
     /// 登录成功后清除该账号和来源 IP 的失败/尝试计数。
-    pub async fn reset(
-        &self,
-        identifier: &str,
-        client_ip: IpAddr,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn reset(&self, identifier: &str) -> Result<(), sqlx::Error> {
         let identifier_key = digest_key("identifier", &identifier.trim().to_lowercase());
-        let _ = client_ip;
-
         sqlx::query("DELETE FROM login_rate_limits WHERE bucket_key = $1")
             .bind(identifier_key)
             .execute(&self.pool)
