@@ -6,7 +6,7 @@ use axum::{
 };
 use identity::{
     auth::{AuthenticationError, LoginError, RegistrationError},
-    user::{NewUser, User, UserRepository, UserStatus},
+    user::{NewUser, User, UserRepository, UserRole, UserStatus},
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -22,13 +22,11 @@ use crate::{
 /// 用户提交的登录信息。
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
-    /// 用户名或邮箱。
     pub identifier: String,
-    /// 用户密码。
     pub password: String,
 }
 
-/// 用户注册信息。
+/// 用户注册信息。故意不提供 role 字段。
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
     pub username: String,
@@ -52,6 +50,7 @@ pub struct UserResponse {
     pub username: String,
     pub email: String,
     pub status: &'static str,
+    pub role: &'static str,
 }
 
 impl From<User> for UserResponse {
@@ -61,11 +60,16 @@ impl From<User> for UserResponse {
             UserStatus::Active => "active",
             UserStatus::Disabled => "disabled",
         };
+        let role = match user.role {
+            UserRole::Customer => "customer",
+            UserRole::Admin => "admin",
+        };
         Self {
             id: user.id,
             username: user.username,
             email: user.email,
             status,
+            role,
         }
     }
 }
@@ -87,7 +91,6 @@ pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> Result<axum::response::Response, (StatusCode, Json<ApiError>)> {
     // 仅使用 TCP 连接的对端地址，不直接信任客户端可伪造的 X-Forwarded-For。
-    // 测试会显式注入 ConnectInfo，线上由 Axum Listener 提供。
     let client_ip = client.ip();
 
     let retry_after = state
@@ -134,7 +137,7 @@ pub async fn login(
     .into_response())
 }
 
-/// 用户注册接口。
+/// 用户注册接口。新用户由数据库默认赋予 customer 角色。
 pub async fn register(
     State(state): State<AppState>,
     Json(payload): Json<RegisterRequest>,
