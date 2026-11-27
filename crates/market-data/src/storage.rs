@@ -1,6 +1,4 @@
-use crate::domain::{
-    CreateDatasetRequest, DailyBar, DatasetOwner, QueryRequest, Symbol,
-};
+use crate::domain::{CreateDatasetRequest, DailyBar, DatasetOwner, QueryRequest, Symbol};
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use sqlx::{PgPool, Row};
@@ -51,7 +49,7 @@ impl MarketDataRepository for PostgresRepository {
             r#"
             INSERT INTO market_datasets
                 (id, name, owner_type, owner_user_id, source_type, status)
-            VALUES ($1::uuid, $2, $3, $4::uuid, $5, 'active')
+            VALUES ($1::text::uuid, $2, $3, $4::text::uuid, $5, 'active')
             "#,
         )
         .bind(&request.id)
@@ -87,7 +85,7 @@ impl MarketDataRepository for PostgresRepository {
                 r#"
                 INSERT INTO market_daily_bars
                     (dataset_id, symbol, trade_date, open, high, low, close, volume, amount)
-                VALUES ($1::uuid, $2, $3::date, $4, $5, $6, $7, $8, $9)
+                VALUES ($1::text::uuid, $2, $3::date, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (dataset_id, symbol, trade_date) DO UPDATE SET
                     open = EXCLUDED.open,
                     high = EXCLUDED.high,
@@ -130,7 +128,7 @@ impl MarketDataRepository for PostgresRepository {
             SELECT symbol, trade_date::text AS trade_date,
                    open, high, low, close, volume, amount
             FROM market_daily_bars
-            WHERE dataset_id = $1::uuid
+            WHERE dataset_id = $1::text::uuid
               AND symbol = ANY($2)
               AND trade_date BETWEEN $3::date AND $4::date
             ORDER BY symbol, trade_date
