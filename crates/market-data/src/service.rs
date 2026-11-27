@@ -50,10 +50,8 @@ impl MarketDataService {
         &self,
         request: IngestionRequest,
     ) -> Result<IngestionResult, MarketDataError> {
-        let (start, end) = Self::normalize_and_validate_range(
-            &request.start_date,
-            &request.end_date,
-        )?;
+        let (start, end) =
+            Self::normalize_and_validate_range(&request.start_date, &request.end_date)?;
         if request.symbols.is_empty() {
             return Err(MarketDataError::InvalidRequest(
                 "symbols 不能为空".into(),
@@ -70,6 +68,13 @@ impl MarketDataService {
             received: raw.len(),
             ..Default::default()
         };
+
+        // Persist the complete source snapshot first. This commits independently,
+        // so later normalization/validation failures cannot erase the raw records.
+        result.raw_stored = self
+            .repository
+            .store_raw_daily_bars(&request.dataset_id, &raw)
+            .await?;
 
         let requested: HashSet<String> = request
             .symbols
@@ -122,10 +127,8 @@ impl MarketDataService {
         &self,
         request: QueryRequest,
     ) -> Result<Vec<DailyBar>, MarketDataError> {
-        let (start, end) = Self::normalize_and_validate_range(
-            &request.start_date,
-            &request.end_date,
-        )?;
+        let (start, end) =
+            Self::normalize_and_validate_range(&request.start_date, &request.end_date)?;
         if request.symbols.is_empty() {
             return Err(MarketDataError::InvalidRequest(
                 "symbols 不能为空".into(),
