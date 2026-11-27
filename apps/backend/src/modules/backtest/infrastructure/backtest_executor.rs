@@ -3,20 +3,20 @@ use crate::modules::backtest::{
     domain::{BacktestJobConfig, StrategyConfig},
 };
 use crate::observability::metrics::Metrics;
+use async_trait::async_trait;
 use backtest_core::{
     BacktestConfig, Bar, BuyAndHoldStrategy, ExecutionMode as CoreExecutionMode, SmaCrossStrategy,
-    Strategy, load_data, run,
+    Strategy, run,
 };
-use std::{
-    path::{Path as FsPath, PathBuf},
-    sync::Arc,
-    time::Instant,
-};
+use market_data::{MarketDataRepository, QueryRequest, Symbol};
+use rust_decimal::prelude::ToPrimitive;
+use std::sync::Arc;
+use std::time::Instant;
 use uuid::Uuid;
 
 pub fn validate_bars(bars: &[Bar]) -> Result<(), String> {
     if bars.is_empty() {
-        return Err("数据集没有行情记录".to_string());
+        return Err("所选数据集、标的和日期范围内没有行情记录".to_string());
     }
 
     for (index, bar) in bars.iter().enumerate() {
@@ -33,42 +33,50 @@ pub fn validate_bars(bars: &[Bar]) -> Result<(), String> {
             && bar.high >= bar.open.max(bar.close);
 
         if !valid {
-            return Err(format!("第 {} 行行情数据不合法，请检查 OHLC", index + 2));
+            return Err(format!("第 {} 条行情数据不合法，请检查 OHLC", index + 1));
         }
 
         if index > 0 && bars[index - 1].date >= bar.date {
-            return Err(format!("第 {} 行日期没有严格递增", index + 2));
+            return Err(format!("第 {} 条行情日期没有严格递增", index + 1));
         }
     }
 
     Ok(())
 }
 
-/// 根据持久化的不可变配置执行回测。
-///
-/// data_dir 是当前 Backend 进程的运行环境配置，不写入 Job，也不从 RabbitMQ 消息读取。
-pub fn execute_config(
-    task_id: uuid::Uuid,
+fn to_engine_bars(rows: Vec<market_data::DailyBar>) -> Result<Vec<Bar>, String> {
+    rows.into_iter()
+        .map(|row| {
+            Ok(Bar {
+                symbol: row.symbol.to_string(),
+                date: row.trade_date,
+                open: row.open.to_f64().ok_or_else(|| "开盘价无法转换为 f64".to_string())?,
+                high: row.high.to_f64().ok_or_else(|| "最高价无法转换为 f64".to_string())?,
+                low: row.low.to_f64().ok_or_else(|| "最低价无法转换为 f64".to_string())?,
+                close: row.close.to_f64().ok_or_else(|| "收盘价无法转换为 f64".to_string())?,
+                volume: row.volume as f64,
+                amount: row.amount
+                    .map(|value| value.to_f64().ok_or_else(|| "成交额无法转换为 f64".to_string()))
+                    .transpose()?,
+            })
+        })
+        .collect()
+}
+
+fn execute_loaded_bars(
+    task_id: Uuid,
     config: BacktestJobConfig,
-    data_dir: &FsPath,
+    bars: Vec<Bar>,
     metrics: Arc<Metrics>,
 ) -> Result<BacktestRunResult, String> {
-    let path = data_dir.join(&config.dataset).join("bars.csv");
-
-    let load_started = Instant::now();
-    let bars = load_data(path.to_string_lossy().as_ref())
-        .map_err(|error| format!("行情 CSV 读取失败：{error}"))?;
-    metrics.record_duration("data_load", load_started.elapsed());
-
     let validate_started = Instant::now();
     validate_bars(&bars)?;
     metrics.record_duration("data_validate", validate_started.elapsed());
 
     let mut strategy: Box<dyn Strategy> = match &config.strategy {
-        StrategyConfig::SmaCross {
-            short_window,
-            long_window,
-        } => Box::new(SmaCrossStrategy::new(*short_window, *long_window)),
+        StrategyConfig::SmaCross { short_window, long_window } => {
+            Box::new(SmaCrossStrategy::new(*short_window, *long_window))
+        }
         StrategyConfig::BuyAndHold => Box::new(BuyAndHoldStrategy::new()),
     };
 
@@ -80,12 +88,8 @@ pub fn execute_config(
         stamp_duty_rate: config.stamp_duty_rate,
         min_commission: config.min_commission,
         execution_mode: match config.execution_mode {
-            crate::modules::backtest::domain::ExecutionMode::NextOpen => {
-                CoreExecutionMode::NextOpen
-            }
-            crate::modules::backtest::domain::ExecutionMode::NextClose => {
-                CoreExecutionMode::NextClose
-            }
+            crate::modules::backtest::domain::ExecutionMode::NextOpen => CoreExecutionMode::NextOpen,
+            crate::modules::backtest::domain::ExecutionMode::NextClose => CoreExecutionMode::NextClose,
         },
     };
 
@@ -97,13 +101,8 @@ pub fn execute_config(
     metrics.record_duration("engine_execute", engine_started.elapsed());
 
     let (strategy_name, short_window, long_window) = match config.strategy {
-        StrategyConfig::SmaCross {
-            short_window,
-            long_window,
-        } => (
-            "sma_cross".to_string(),
-            Some(short_window),
-            Some(long_window),
+        StrategyConfig::SmaCross { short_window, long_window } => (
+            "sma_cross".to_string(), Some(short_window), Some(long_window),
         ),
         StrategyConfig::BuyAndHold => ("buy_and_hold".to_string(), None, None),
     };
@@ -118,27 +117,47 @@ pub fn execute_config(
     ))
 }
 
-/// Backtest Core 的执行适配器。
-///
-/// 负责把文件数据集、运行指标和回测引擎组合起来。
-/// Worker 只依赖 BacktestExecutor，不直接接触这些实现细节。
+/// 从 PostgreSQL 查询行情；仅将纯 CPU 回测计算放入 spawn_blocking。
 pub struct BacktestCoreExecutor {
-    data_dir: PathBuf,
+    market_data: Arc<dyn MarketDataRepository>,
     metrics: Arc<Metrics>,
 }
 
 impl BacktestCoreExecutor {
-    pub fn new(data_dir: PathBuf, metrics: Arc<Metrics>) -> Self {
-        Self { data_dir, metrics }
+    pub fn new(market_data: Arc<dyn MarketDataRepository>, metrics: Arc<Metrics>) -> Self {
+        Self { market_data, metrics }
     }
 }
 
+#[async_trait]
 impl BacktestExecutor for BacktestCoreExecutor {
-    fn execute(
+    async fn execute(
         &self,
         task_id: Uuid,
         config: BacktestJobConfig,
     ) -> Result<BacktestRunResult, String> {
-        execute_config(task_id, config, &self.data_dir, self.metrics.clone())
+        let symbol = Symbol::new(config.symbols.first()
+            .ok_or_else(|| "symbols 不能为空".to_string())?.clone())
+            .map_err(|error| format!("标的代码无效：{error}"))?;
+
+        let query = QueryRequest {
+            dataset_id: config.dataset.clone(),
+            symbols: vec![symbol],
+            start_date: market_data::normalize::normalize_date(&config.start_date)?,
+            end_date: market_data::normalize::normalize_date(&config.end_date)?,
+        };
+
+        let load_started = Instant::now();
+        let rows = self.market_data.query_daily_bars(&query).await
+            .map_err(|error| format!("从 PostgreSQL 查询行情失败：{error}"))?;
+        self.metrics.record_duration("data_load", load_started.elapsed());
+
+        let bars = to_engine_bars(rows)?;
+        let metrics = self.metrics.clone();
+        tokio::task::spawn_blocking(move || {
+            execute_loaded_bars(task_id, config, bars, metrics)
+        })
+        .await
+        .map_err(|error| format!("回测计算线程异常：{error}"))?
     }
 }
