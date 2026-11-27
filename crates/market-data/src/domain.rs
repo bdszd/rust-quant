@@ -1,5 +1,6 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -90,6 +91,9 @@ pub struct RawDailyBar {
     pub price_unit: PriceUnit,
     pub volume_unit: VolumeUnit,
     pub amount_unit: Option<AmountUnit>,
+    pub source: DatasetSource,
+    /// Exact source-level fields and values, retained for audit and reprocessing.
+    pub raw_payload: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -126,4 +130,5 @@ pub struct IngestionResult {
     pub accepted: usize,
     pub rejected: usize,
     pub upserted: usize,
+    pub raw_stored: usize,
 }
