@@ -1,10 +1,12 @@
 use serde::Serialize;
 
-/// 清洗后的数据集目录项。
+/// PostgreSQL 中的一个可用数据集。
 #[derive(Debug, Clone, Serialize)]
 pub struct DatasetSummary {
-    /// 股票代码/日期范围，例如 000001.SZ/20240101_20241231。
+    /// 数据集 UUID，后续创建回测任务时使用。
+    pub id: String,
+    /// 数据集显示名称。
     pub name: String,
-    /// 从 quality_report.json 的 accepted_rows 读取。
-    pub rows: usize,
+    /// 该数据集包含的标准日线记录数。
+    pub rows: i64,
 }
