@@ -7,11 +7,19 @@
 - Source：读取原始数据，不负责清洗、单位换算或写数据库。
 - Normalize：统一日期和单位。
 - Validation：检查 OHLC、成交量、成交额基本有效性。
-- Storage：PostgreSQL 幂等 upsert 与区间查询。
-- 数据库迁移由 Backend 统一管理；本 crate 不提供独立 migrator，避免多个 crate 在同一数据库中争用 SQLx 默认 `_sqlx_migrations` 表。当前行情数据库接入暂未启用，后续接入时应将本目录迁移纳入 Backend 的统一迁移序列。
-- Service：向调用方提供统一导入和查询入口。
+- Storage：通过调用方注入的 PostgreSQL 连接池存储和查询行情。
+- Service：提供数据集创建、行情导入和查询入口。
+- 数据库迁移由 Backend 统一管理，SQL 文件位于 `apps/backend/migrations`；本 crate 不包含或运行独立迁移。
 
-本 crate 不依赖 backtest-core、trading-core 或 backend。
+## 数据归属
+
+- 每条行情必须属于一个 `dataset_id`。
+- 数据集所有者分为平台（`platform`）和用户（`user`）。
+- 平台数据集的 `owner_user_id` 为空；用户数据集必须关联用户 ID。
+- 每个数据集独立保存行情。相同股票、相同交易日可以存在于不同数据集中，不会互相覆盖。
+- 行情唯一键为 `(dataset_id, symbol, trade_date)`。
+- 删除数据集时，其行情记录通过外键级联删除。
+- 用户身份认证和数据集访问授权由 Backend 负责；本 crate 只执行数据集维度的读写，不替代 Backend 的所有权检查。
 
 ## 标准单位
 
