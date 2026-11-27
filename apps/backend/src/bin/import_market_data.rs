@@ -320,12 +320,12 @@ async fn import_transaction(pool: &PgPool, snapshot: Snapshot) -> Result<(), Box
         .bind(dataset_id)
         .bind(&row.symbol)
         .bind(&row.trade_date)
-        .bind(row.open.to_string())
-        .bind(row.high.to_string())
-        .bind(row.low.to_string())
-        .bind(row.close.to_string())
+        .bind(row.open)
+        .bind(row.high)
+        .bind(row.low)
+        .bind(row.close)
         .bind(row.volume)
-        .bind(row.amount.to_string())
+        .bind(row.amount)
         .execute(&mut *tx)
         .await?;
     }
