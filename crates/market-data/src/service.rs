@@ -1,5 +1,7 @@
 use crate::{
-    domain::{DailyBar, IngestionRequest, IngestionResult, QueryRequest},
+    domain::{
+        CreateDatasetRequest, DailyBar, IngestionRequest, IngestionResult, QueryRequest,
+    },
     normalize::{normalize_daily_bar, normalize_date},
     source::{MarketDataSource, SourceError},
     storage::{MarketDataRepository, StorageError},
@@ -22,6 +24,7 @@ pub struct MarketDataService {
     source: Arc<dyn MarketDataSource>,
     repository: Arc<dyn MarketDataRepository>,
 }
+
 impl MarketDataService {
     pub fn new(
         source: Arc<dyn MarketDataSource>,
@@ -30,13 +33,28 @@ impl MarketDataService {
         Self { source, repository }
     }
 
+    pub async fn create_dataset(
+        &self,
+        request: &CreateDatasetRequest,
+    ) -> Result<(), MarketDataError> {
+        if request.name.trim().is_empty() || request.name.len() > 120 {
+            return Err(MarketDataError::InvalidRequest(
+                "数据集名称不能为空且不能超过 120 字节".into(),
+            ));
+        }
+        self.repository.create_dataset(request).await?;
+        Ok(())
+    }
+
     pub async fn ingest(
         &self,
         request: IngestionRequest,
     ) -> Result<IngestionResult, MarketDataError> {
         Self::validate_range(&request.start_date, &request.end_date)?;
         if request.symbols.is_empty() {
-            return Err(MarketDataError::InvalidRequest("symbols 不能为空".into()));
+            return Err(MarketDataError::InvalidRequest(
+                "symbols 不能为空".into(),
+            ));
         }
 
         let raw = self.source.fetch_daily_bars(&request).await?;
@@ -44,13 +62,16 @@ impl MarketDataService {
             received: raw.len(),
             ..Default::default()
         };
+
         let requested: HashSet<String> = request
             .symbols
             .iter()
-            .map(|s| s.as_str().to_owned())
+            .map(|symbol| symbol.as_str().to_owned())
             .collect();
-        let start = normalize_date(&request.start_date).map_err(MarketDataError::InvalidRequest)?;
+        let start =
+            normalize_date(&request.start_date).map_err(MarketDataError::InvalidRequest)?;
         let end = normalize_date(&request.end_date).map_err(MarketDataError::InvalidRequest)?;
+
         let mut seen = HashSet::new();
         let mut accepted: Vec<DailyBar> = Vec::new();
 
@@ -62,6 +83,7 @@ impl MarketDataService {
                     continue;
                 }
             };
+
             let key = format!("{}:{}", bar.symbol, bar.trade_date);
             if !requested.contains(bar.symbol.as_str())
                 || bar.trade_date < start
@@ -72,6 +94,7 @@ impl MarketDataService {
                 result.rejected += 1;
                 continue;
             }
+
             accepted.push(bar);
         }
 
@@ -80,8 +103,13 @@ impl MarketDataService {
                 .cmp(&b.symbol)
                 .then(a.trade_date.cmp(&b.trade_date))
         });
+
         result.accepted = accepted.len();
-        result.upserted = self.repository.upsert_daily_bars(&accepted).await?;
+        result.upserted = self
+            .repository
+            .upsert_daily_bars(request.dataset_id, &accepted)
+            .await?;
+
         Ok(result)
     }
 
@@ -91,8 +119,11 @@ impl MarketDataService {
     ) -> Result<Vec<DailyBar>, MarketDataError> {
         Self::validate_range(&request.start_date, &request.end_date)?;
         if request.symbols.is_empty() {
-            return Err(MarketDataError::InvalidRequest("symbols 不能为空".into()));
+            return Err(MarketDataError::InvalidRequest(
+                "symbols 不能为空".into(),
+            ));
         }
+
         let bars = self.repository.query_daily_bars(&request).await?;
         Ok(bars
             .into_iter()
@@ -103,11 +134,13 @@ impl MarketDataService {
     fn validate_range(start: &str, end: &str) -> Result<(), MarketDataError> {
         let start = normalize_date(start).map_err(MarketDataError::InvalidRequest)?;
         let end = normalize_date(end).map_err(MarketDataError::InvalidRequest)?;
+
         if start > end {
             return Err(MarketDataError::InvalidRequest(
                 "start_date 不能晚于 end_date".into(),
             ));
         }
+
         Ok(())
     }
 }
