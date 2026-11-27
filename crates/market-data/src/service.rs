@@ -4,7 +4,7 @@ use crate::{
     },
     normalize::{normalize_daily_bar, normalize_date},
     source::{MarketDataSource, SourceError},
-    storage::{MarketDataRepository, StorageError},
+    storage::{DatasetInfo, MarketDataRepository, StorageError},
     validation::validate_daily_bar,
 };
 use std::{collections::HashSet, sync::Arc};
@@ -31,6 +31,14 @@ impl MarketDataService {
         repository: Arc<dyn MarketDataRepository>,
     ) -> Self {
         Self { source, repository }
+    }
+
+    pub async fn list_datasets(&self) -> Result<Vec<DatasetInfo>, MarketDataError> {
+        Ok(self.repository.list_datasets().await?)
+    }
+
+    pub async fn dataset_exists(&self, dataset_id: &str) -> Result<bool, MarketDataError> {
+        Ok(self.repository.dataset_exists(dataset_id).await?)
     }
 
     pub async fn create_dataset(
