@@ -3,10 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use market_data::MarketDataRepository;
 
-use crate::modules::dataset::application::{
-    ports::DatasetCatalog,
-    query::DatasetSummary,
-};
+use crate::modules::dataset::application::{ports::DatasetCatalog, query::DatasetSummary};
 
 /// 基于 market-data Repository 的 PostgreSQL 数据集目录。
 ///
