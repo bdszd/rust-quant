@@ -25,9 +25,7 @@ use crate::{
         },
         dataset::{
             application::DatasetApplicationService,
-            infrastructure::{
-                postgres_catalog::PgDatasetCatalog,
-            },
+            infrastructure::postgres_catalog::PgDatasetCatalog,
         },
     },
     observability::metrics::Metrics,
@@ -47,7 +45,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let worker_count = parse_usize_env("RUST_QUANT_WORKER_COUNT", DEFAULT_WORKER_COUNT)?;
     let run_migrations = parse_bool_env("RUST_QUANT_RUN_MIGRATIONS", true)?;
     let migrate_only = parse_bool_env("RUST_QUANT_MIGRATE_ONLY", false)?;
-
 
     let database_url = env::var("DATABASE_URL").expect(
         "必须设置 DATABASE_URL，例如 postgres://postgres:postgres@localhost:5433/rust_quant",
