@@ -25,7 +25,11 @@ pub enum StrategyConfig {
 /// 注意：这里不保存 data_dir 等机器本地路径。数据目录属于运行环境配置。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BacktestJobConfig {
+    /// PostgreSQL market_datasets.id (UUID string).
     pub dataset: String,
+    pub symbols: Vec<String>,
+    pub start_date: String,
+    pub end_date: String,
     pub initial_cash: f64,
     pub commission_rate: f64,
     pub slippage_rate: f64,
