@@ -4,7 +4,10 @@ import { check, sleep } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
 
 const BASE_URL = __ENV.BASE_URL || 'http://127.0.0.1:8000';
-const DATASET = __ENV.DATASET;
+const DATASET_ID = __ENV.DATASET_ID;
+const SYMBOL = __ENV.SYMBOL || '000001.SZ';
+const START_DATE = __ENV.START_DATE || '2006-01-04';
+const END_DATE = __ENV.END_DATE || '2026-11-06';
 
 // 任务统计
 const acceptedTasks = new Counter('accepted_tasks');
@@ -26,8 +29,8 @@ const TASK_TIMEOUT = 180000;
 // 每次查询之间等待 1 秒
 const POLL_INTERVAL = 1;
 
-if (!DATASET) {
-    throw new Error('请通过 -e DATASET=实际文件名.csv 指定数据集');
+if (!DATASET_ID) {
+    throw new Error('请通过 -e DATASET_ID=PostgreSQL数据集UUID 指定数据集');
 }
 
 export const options = {
@@ -52,7 +55,10 @@ export default function () {
 
     // 第一阶段：创建任务
     const payload = {
-        dataset: DATASET,
+        dataset_id: DATASET_ID,
+        symbols: [SYMBOL],
+        start_date: START_DATE,
+        end_date: END_DATE,
         initial_cash: 100000,
         commission_rate: 0.001,
         slippage_rate: 0.001,
