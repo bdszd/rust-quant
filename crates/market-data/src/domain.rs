@@ -1,6 +1,7 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -11,18 +12,18 @@ impl Symbol {
         let value = value.into().trim().to_ascii_uppercase();
         if value.is_empty()
             || value.len() > 20
-            || !value
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'.')
+            || !value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.')
         {
             return Err(format!("非法股票代码：{value}"));
         }
         Ok(Self(value))
     }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
+
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
@@ -30,14 +31,47 @@ impl fmt::Display for Symbol {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatasetOwner {
+    Platform,
+    User(Uuid),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatasetSource {
+    Tushare,
+    Csv,
+    Legacy,
+}
+
+impl DatasetSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Tushare => "tushare",
+            Self::Csv => "csv",
+            Self::Legacy => "legacy",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateDatasetRequest {
+    pub id: Uuid,
+    pub name: String,
+    pub owner: DatasetOwner,
+    pub source: DatasetSource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PriceUnit {
     Cny,
 }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VolumeUnit {
     Lots,
     Shares,
 }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AmountUnit {
     ThousandCny,
@@ -73,16 +107,20 @@ pub struct DailyBar {
 
 #[derive(Debug, Clone)]
 pub struct IngestionRequest {
+    pub dataset_id: Uuid,
     pub symbols: Vec<Symbol>,
     pub start_date: String,
     pub end_date: String,
 }
+
 #[derive(Debug, Clone)]
 pub struct QueryRequest {
+    pub dataset_id: Uuid,
     pub symbols: Vec<Symbol>,
     pub start_date: String,
     pub end_date: String,
 }
+
 #[derive(Debug, Clone, Default)]
 pub struct IngestionResult {
     pub received: usize,
