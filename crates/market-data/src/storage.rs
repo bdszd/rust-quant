@@ -15,8 +15,18 @@ pub enum StorageError {
 }
 
 #[async_trait]
+pub struct DatasetInfo {
+    pub id: String,
+    pub name: String,
+    pub rows: i64,
+}
+
 pub trait MarketDataRepository: Send + Sync {
     async fn create_dataset(&self, request: &CreateDatasetRequest) -> Result<(), StorageError>;
+
+    async fn dataset_exists(&self, dataset_id: &str) -> Result<bool, StorageError>;
+
+    async fn list_datasets(&self) -> Result<Vec<DatasetInfo>, StorageError>;
 
     /// Persist source snapshots independently before normalization begins.
     async fn store_raw_daily_bars(
@@ -50,6 +60,42 @@ impl PostgresRepository {
 
 #[async_trait]
 impl MarketDataRepository for PostgresRepository {
+    async fn dataset_exists(&self, dataset_id: &str) -> Result<bool, StorageError> {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM market_datasets WHERE id = $1::text::uuid AND status = 'active')",
+        )
+        .bind(dataset_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(exists)
+    }
+
+    async fn list_datasets(&self) -> Result<Vec<DatasetInfo>, StorageError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT d.id::text AS id, d.name,
+                   COUNT(b.trade_date)::bigint AS rows
+            FROM market_datasets d
+            LEFT JOIN market_daily_bars b ON b.dataset_id = d.id
+            WHERE d.status = 'active'
+            GROUP BY d.id, d.name, d.created_at
+            ORDER BY d.created_at DESC, d.id
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(DatasetInfo {
+                    id: row.try_get("id")?,
+                    name: row.try_get("name")?,
+                    rows: row.try_get("rows")?,
+                })
+            })
+            .collect()
+    }
+
     async fn create_dataset(&self, request: &CreateDatasetRequest) -> Result<(), StorageError> {
         let (owner_type, owner_user_id) = match &request.owner {
             DatasetOwner::Platform => ("platform", None),
