@@ -186,6 +186,15 @@ fn load_and_validate(raw_path: &Path, bars_path: &Path) -> Result<Snapshot, Box<
         }
     }
 
+    if raw.len() != 4_929 {
+        return Err(format!("本次预期导入 4,929 条记录，实际 Raw={} 条", raw.len()).into());
+    }
+    if bars.first().map(|row| row.trade_date.as_str()) != Some("2006-01-04")
+        || bars.last().map(|row| row.trade_date.as_str()) != Some("2026-11-06")
+    {
+        return Err("数据日期范围不符合预期，要求 2006-01-04 至 2026-11-06".into());
+    }
+
     Ok(Snapshot { raw, bars, raw_sha256, bars_sha256 })
 }
 
