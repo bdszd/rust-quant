@@ -42,9 +42,9 @@ impl PostgresRepository {
 #[async_trait]
 impl MarketDataRepository for PostgresRepository {
     async fn create_dataset(&self, request: &CreateDatasetRequest) -> Result<(), StorageError> {
-        let (owner_type, owner_user_id) = match request.owner {
+        let (owner_type, owner_user_id) = match &request.owner {
             DatasetOwner::Platform => ("platform", None),
-            DatasetOwner::User(user_id) => ("user", Some(user_id)),
+            DatasetOwner::User(user_id) => ("user", Some(user_id.as_str())),
         };
 
         sqlx::query(
@@ -54,7 +54,7 @@ impl MarketDataRepository for PostgresRepository {
             VALUES ($1::uuid, $2, $3, $4::uuid, $5, 'active')
             "#,
         )
-        .bind(request.id)
+        .bind(&request.id)
         .bind(&request.name)
         .bind(owner_type)
         .bind(owner_user_id)
@@ -98,7 +98,7 @@ impl MarketDataRepository for PostgresRepository {
                     updated_at = NOW()
                 "#,
             )
-            .bind(dataset_id)
+            .bind(&dataset_id)
             .bind(bar.symbol.as_str())
             .bind(&bar.trade_date)
             .bind(bar.open)
@@ -136,7 +136,7 @@ impl MarketDataRepository for PostgresRepository {
             ORDER BY symbol, trade_date
             "#,
         )
-        .bind(request.dataset_id)
+        .bind(&request.dataset_id)
         .bind(&symbols)
         .bind(&request.start_date)
         .bind(&request.end_date)
