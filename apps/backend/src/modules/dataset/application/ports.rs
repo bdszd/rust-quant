@@ -1,8 +1,15 @@
+use async_trait::async_trait;
+
 use super::query::DatasetSummary;
 
-/// 数据集目录端口：定义应用层需要的目录查询能力。
+/// 数据集列表查询能力。具体数据从 PostgreSQL 获取。
+#[async_trait]
 pub trait DatasetCatalog: Send + Sync {
-    fn exists(&self, dataset: &str) -> Result<bool, String>;
+    async fn list(&self) -> Result<Vec<DatasetSummary>, String>;
+}
 
-    fn list(&self) -> Result<Vec<DatasetSummary>, String>;
+/// 旧 CSV 回测链路暂时仍通过文件系统确认数据集存在。
+/// 下一阶段切换 PostgreSQL 行情查询后，再移除此端口。
+pub trait DatasetExistence: Send + Sync {
+    fn exists(&self, dataset: &str) -> Result<bool, String>;
 }
