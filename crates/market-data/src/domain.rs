@@ -29,7 +29,7 @@ impl fmt::Display for Symbol {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DatasetOwner {
     Platform,
     User(String),
@@ -114,7 +114,7 @@ pub struct IngestionRequest {
 
 #[derive(Debug, Clone)]
 pub struct QueryRequest {
-    pub dataset_id: Uuid,
+    pub dataset_id: String,
     pub symbols: Vec<Symbol>,
     pub start_date: String,
     pub end_date: String,
