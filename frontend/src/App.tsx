@@ -253,7 +253,7 @@ export default function App() {
           <PanelTitle eyebrow="MARKET DATA" title="数据库行情数据集"/>
           <p className="muted-copy">后端从 PostgreSQL 的行情数据表读取可用数据集。</p>
           {datasets.length === 0 ? <Empty title="还没有可用数据集" text="请先将行情数据导入 PostgreSQL。"/> :
-            <div className="data-grid">{datasets.map(item => <div className="dataset-card" key={item.name}><div className="dataset-icon"><Database size={18}/></div><div><b>{item.name.split("/")[0]}</b><small>{item.name.split("/")[1]}</small></div><strong>{item.rows.toLocaleString()} <small>bars</small></strong><button className="button button-ghost" onClick={() => {setDataset(item.name);setPage("new");}}>用于回测</button></div>)}</div>}
+            <div className="data-grid">{datasets.map(item => <div className="dataset-card" key={item.id}><div className="dataset-icon"><Database size={18}/></div><div><b>{item.name}</b></div><strong>{item.rows.toLocaleString()} <small>bars</small></strong><button className="button button-ghost" onClick={() => {setDataset(item.id);setPage("new");}}>用于回测</button></div>)}</div>}
         </section>}
 
         {page === "history" && <section className="panel">
