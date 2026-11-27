@@ -25,7 +25,10 @@ use crate::{
         },
         dataset::{
             application::DatasetApplicationService,
-            infrastructure::filesystem_catalog::FilesystemDatasetCatalog,
+            infrastructure::{
+                filesystem_catalog::FilesystemDatasetCatalog,
+                postgres_catalog::PgDatasetCatalog,
+            },
         },
     },
     observability::metrics::Metrics,
@@ -89,10 +92,15 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let application_repository: Arc<dyn BacktestRepository> = repository.clone();
     let worker_execution_service = Arc::new(BacktestExecutionService::new(worker_repository));
 
-    let dataset_catalog = Arc::new(FilesystemDatasetCatalog::new(data_dir.clone()));
+    let market_data_repository: Arc<dyn market_data::MarketDataRepository> =
+        Arc::new(market_data::PostgresRepository::new(db.clone()));
+    let dataset_catalog = Arc::new(PgDatasetCatalog::new(market_data_repository));
+    let legacy_dataset_existence =
+        Arc::new(FilesystemDatasetCatalog::new(data_dir.clone()));
+
     let backtest = Arc::new(BacktestApplicationService::new(
         application_repository,
-        dataset_catalog.clone(),
+        legacy_dataset_existence,
     ));
     let datasets = Arc::new(DatasetApplicationService::new(dataset_catalog));
 
