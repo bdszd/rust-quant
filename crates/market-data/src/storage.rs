@@ -1,7 +1,9 @@
-use crate::domain::{CreateDatasetRequest, DailyBar, DatasetOwner, QueryRequest, Symbol};
+use crate::domain::{
+    CreateDatasetRequest, DailyBar, DatasetOwner, QueryRequest, RawDailyBar, Symbol,
+};
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Row, types::Json};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -15,11 +17,20 @@ pub enum StorageError {
 #[async_trait]
 pub trait MarketDataRepository: Send + Sync {
     async fn create_dataset(&self, request: &CreateDatasetRequest) -> Result<(), StorageError>;
+
+    /// Persist source snapshots independently before normalization begins.
+    async fn store_raw_daily_bars(
+        &self,
+        dataset_id: &str,
+        bars: &[RawDailyBar],
+    ) -> Result<usize, StorageError>;
+
     async fn upsert_daily_bars(
         &self,
         dataset_id: String,
         bars: &[DailyBar],
     ) -> Result<usize, StorageError>;
+
     async fn query_daily_bars(
         &self,
         request: &QueryRequest,
@@ -61,6 +72,39 @@ impl MarketDataRepository for PostgresRepository {
         .await?;
 
         Ok(())
+    }
+
+    async fn store_raw_daily_bars(
+        &self,
+        dataset_id: &str,
+        bars: &[RawDailyBar],
+    ) -> Result<usize, StorageError> {
+        if bars.is_empty() {
+            return Ok(0);
+        }
+
+        // This transaction is committed before service-level normalization starts.
+        // Raw rows are append-only snapshots: repeated imports do not overwrite history.
+        let mut tx = self.pool.begin().await?;
+        for bar in bars {
+            sqlx::query(
+                r#"
+                INSERT INTO market_raw_daily_bars
+                    (dataset_id, source_type, symbol, trade_date, raw_payload)
+                VALUES ($1::text::uuid, $2, $3, $4, $5)
+                "#,
+            )
+            .bind(dataset_id)
+            .bind(bar.source.as_str())
+            .bind(&bar.symbol)
+            .bind(&bar.trade_date)
+            .bind(Json(&bar.raw_payload))
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(bars.len())
     }
 
     async fn upsert_daily_bars(
