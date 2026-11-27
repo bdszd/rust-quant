@@ -1,7 +1,6 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -33,7 +32,7 @@ impl fmt::Display for Symbol {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatasetOwner {
     Platform,
-    User(Uuid),
+    User(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,7 +54,7 @@ impl DatasetSource {
 
 #[derive(Debug, Clone)]
 pub struct CreateDatasetRequest {
-    pub id: Uuid,
+    pub id: String,
     pub name: String,
     pub owner: DatasetOwner,
     pub source: DatasetSource,
@@ -107,7 +106,7 @@ pub struct DailyBar {
 
 #[derive(Debug, Clone)]
 pub struct IngestionRequest {
-    pub dataset_id: Uuid,
+    pub dataset_id: String,
     pub symbols: Vec<Symbol>,
     pub start_date: String,
     pub end_date: String,
