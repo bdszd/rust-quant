@@ -323,7 +323,7 @@ async fn process_delivery(
     let execution_executor = executor.clone();
     let execution_started = Instant::now();
 
-    let execution = execution_executor.execute(task_id, config).await.map_err(|error| error);
+    let execution = execution_executor.execute(task_id, config).await;
 
     let execution_duration_ms = duration_to_ms(execution_started.elapsed());
 
