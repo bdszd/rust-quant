@@ -90,7 +90,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let metrics = Arc::new(Metrics::new(worker_count));
     let worker_executor: Arc<dyn BacktestExecutor> =
-        Arc::new(BacktestCoreExecutor::new(market_data_repository, metrics.clone()));
+        Arc::new(BacktestCoreExecutor::new(
+            market_data_repository,
+            metrics.clone(),
+        ));
     let authentication = AuthenticationService::new(db.clone());
     let registration = RegistrationService::new(db.clone());
     let login_rate_limiter = LoginRateLimiter::new(db.clone());
