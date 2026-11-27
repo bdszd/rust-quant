@@ -37,13 +37,19 @@ pub fn normalize_date(value: &str) -> Result<String, String> {
 pub fn normalize_daily_bar(raw: RawDailyBar) -> Result<DailyBar, String> {
     let symbol = crate::domain::Symbol::new(raw.symbol)?;
     let trade_date = normalize_date(&raw.trade_date)?;
-    let volume = match raw.volume_unit {
+    let volume_in_shares = match raw.volume_unit {
         VolumeUnit::Lots => raw.volume * Decimal::from(100),
         VolumeUnit::Shares => raw.volume,
     };
-    let volume = volume
+
+    // 成交量最终以“股”为单位，必须是整数；不能静默截断小数。
+    let volume = volume_in_shares
         .to_i64()
         .ok_or_else(|| "成交量不是有效整数或超出范围".to_owned())?;
+    if Decimal::from(volume) != volume_in_shares {
+        return Err("成交量换算成股后必须是整数".to_owned());
+    }
+
     let amount = raw.amount.map(|v| match raw.amount_unit {
         Some(AmountUnit::ThousandCny) => v * Decimal::from(1000),
         _ => v,
@@ -65,27 +71,50 @@ mod tests {
     use super::*;
     use crate::domain::{AmountUnit, PriceUnit, RawDailyBar, VolumeUnit};
     use std::str::FromStr;
-    #[test]
-    fn converts_tushare_volume_and_amount_units() {
-        let d = |v| Decimal::from_str(v).unwrap();
-        let bar = normalize_daily_bar(RawDailyBar {
+
+    fn decimal(value: &str) -> Decimal {
+        Decimal::from_str(value).unwrap()
+    }
+
+    fn raw_bar(volume: &str, volume_unit: VolumeUnit) -> RawDailyBar {
+        RawDailyBar {
             symbol: "000001.SZ".into(),
             trade_date: "20240102".into(),
-            open: d("10"),
-            high: d("11"),
-            low: d("9"),
-            close: d("10.5"),
-            volume: d("123.45"),
-            amount: Some(d("4567.89")),
+            open: decimal("10"),
+            high: decimal("11"),
+            low: decimal("9"),
+            close: decimal("10.5"),
+            volume: decimal(volume),
+            amount: Some(decimal("4567.89")),
             price_unit: PriceUnit::Cny,
-            volume_unit: VolumeUnit::Lots,
+            volume_unit,
             amount_unit: Some(AmountUnit::ThousandCny),
-        })
-        .unwrap();
+        }
+    }
+
+    #[test]
+    fn converts_tushare_volume_and_amount_units() {
+        let bar = normalize_daily_bar(raw_bar("123.45", VolumeUnit::Lots)).unwrap();
+
         assert_eq!(bar.volume, 12345);
-        assert_eq!(bar.amount, Some(d("4567890")));
+        assert_eq!(bar.amount, Some(decimal("4567890")));
         assert_eq!(bar.trade_date, "2024-01-02");
     }
+
+    #[test]
+    fn rejects_fractional_share_volume() {
+        let result = normalize_daily_bar(raw_bar("123.45", VolumeUnit::Shares));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_lot_volume_that_converts_to_fractional_shares() {
+        let result = normalize_daily_bar(raw_bar("123.456", VolumeUnit::Lots));
+
+        assert!(result.is_err());
+    }
+
     #[test]
     fn rejects_invalid_date() {
         assert!(normalize_date("20240230").is_err());
