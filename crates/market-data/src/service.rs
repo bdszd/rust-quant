@@ -50,14 +50,22 @@ impl MarketDataService {
         &self,
         request: IngestionRequest,
     ) -> Result<IngestionResult, MarketDataError> {
-        Self::validate_range(&request.start_date, &request.end_date)?;
+        let (start, end) = Self::normalize_and_validate_range(
+            &request.start_date,
+            &request.end_date,
+        )?;
         if request.symbols.is_empty() {
             return Err(MarketDataError::InvalidRequest(
                 "symbols 不能为空".into(),
             ));
         }
 
-        let raw = self.source.fetch_daily_bars(&request).await?;
+        // 数据源只接收标准化后的日期，避免不同数据源各自处理日期格式。
+        let mut source_request = request.clone();
+        source_request.start_date = start.clone();
+        source_request.end_date = end.clone();
+        let raw = self.source.fetch_daily_bars(&source_request).await?;
+
         let mut result = IngestionResult {
             received: raw.len(),
             ..Default::default()
@@ -68,9 +76,6 @@ impl MarketDataService {
             .iter()
             .map(|symbol| symbol.as_str().to_owned())
             .collect();
-        let start =
-            normalize_date(&request.start_date).map_err(MarketDataError::InvalidRequest)?;
-        let end = normalize_date(&request.end_date).map_err(MarketDataError::InvalidRequest)?;
 
         let mut seen = HashSet::new();
         let mut accepted: Vec<DailyBar> = Vec::new();
@@ -117,21 +122,35 @@ impl MarketDataService {
         &self,
         request: QueryRequest,
     ) -> Result<Vec<DailyBar>, MarketDataError> {
-        Self::validate_range(&request.start_date, &request.end_date)?;
+        let (start, end) = Self::normalize_and_validate_range(
+            &request.start_date,
+            &request.end_date,
+        )?;
         if request.symbols.is_empty() {
             return Err(MarketDataError::InvalidRequest(
                 "symbols 不能为空".into(),
             ));
         }
 
-        let bars = self.repository.query_daily_bars(&request).await?;
+        // Repository 接收统一格式的日期，不依赖调用方传入的格式。
+        let mut normalized_request = request;
+        normalized_request.start_date = start;
+        normalized_request.end_date = end;
+
+        let bars = self
+            .repository
+            .query_daily_bars(&normalized_request)
+            .await?;
         Ok(bars
             .into_iter()
             .filter(|bar| validate_daily_bar(bar).is_ok())
             .collect())
     }
 
-    fn validate_range(start: &str, end: &str) -> Result<(), MarketDataError> {
+    fn normalize_and_validate_range(
+        start: &str,
+        end: &str,
+    ) -> Result<(String, String), MarketDataError> {
         let start = normalize_date(start).map_err(MarketDataError::InvalidRequest)?;
         let end = normalize_date(end).map_err(MarketDataError::InvalidRequest)?;
 
@@ -141,6 +160,6 @@ impl MarketDataService {
             ));
         }
 
-        Ok(())
+        Ok((start, end))
     }
 }
