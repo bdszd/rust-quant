@@ -7,9 +7,3 @@ use super::query::DatasetSummary;
 pub trait DatasetCatalog: Send + Sync {
     async fn list(&self) -> Result<Vec<DatasetSummary>, String>;
 }
-
-/// 旧 CSV 回测链路暂时仍通过文件系统确认数据集存在。
-/// 下一阶段切换 PostgreSQL 行情查询后，再移除此端口。
-pub trait DatasetExistence: Send + Sync {
-    fn exists(&self, dataset: &str) -> Result<bool, String>;
-}
