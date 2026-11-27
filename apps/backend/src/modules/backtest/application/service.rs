@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::modules::dataset::application::ports::DatasetExistence;
+use market_data::MarketDataRepository;
 
 use crate::modules::backtest::domain::{
     BacktestJob, BacktestJobConfig, BacktestTask, StrategyConfig, TaskStatus,
@@ -18,11 +18,11 @@ use super::{
 /// 该服务本身不依赖 Axum、SQLx 或 RabbitMQ。
 pub struct BacktestApplicationService {
     repository: Arc<dyn BacktestRepository>,
-    datasets: Arc<dyn DatasetExistence>,
+    datasets: Arc<dyn MarketDataRepository>,
 }
 
 impl BacktestApplicationService {
-    pub fn new(repository: Arc<dyn BacktestRepository>, datasets: Arc<dyn DatasetExistence>) -> Self {
+    pub fn new(repository: Arc<dyn BacktestRepository>, datasets: Arc<dyn MarketDataRepository>) -> Self {
         Self {
             repository,
             datasets,
@@ -37,8 +37,9 @@ impl BacktestApplicationService {
 
         let dataset_exists = self
             .datasets
-            .exists(&command.config.dataset)
-            .map_err(BacktestApplicationError::DatasetCatalog)?;
+            .dataset_exists(&command.config.dataset)
+            .await
+            .map_err(|error| BacktestApplicationError::DatasetCatalog(error.to_string()))?;
         if !dataset_exists {
             return Err(BacktestApplicationError::DatasetNotFound(
                 command.config.dataset.clone(),
@@ -88,7 +89,21 @@ impl BacktestApplicationService {
 }
 
 fn validate_config(config: &BacktestJobConfig) -> Result<(), String> {
-    validate_dataset_name(&config.dataset)?;
+    uuid::Uuid::parse_str(&config.dataset)
+        .map_err(|_| "dataset_id 必须是有效的 UUID".to_string())?;
+
+    if config.symbols.len() != 1 {
+        return Err("当前 sma_cross / buy_and_hold 执行器每次只支持一个标的".to_string());
+    }
+    for symbol in &config.symbols {
+        market_data::Symbol::new(symbol.clone())
+            .map_err(|error| format!("标的代码无效：{error}"))?;
+    }
+    let start = market_data::normalize::normalize_date(&config.start_date)?;
+    let end = market_data::normalize::normalize_date(&config.end_date)?;
+    if start > end {
+        return Err("start_date 不能晚于 end_date".to_string());
+    }
 
     if !config.initial_cash.is_finite() || config.initial_cash <= 0.0 {
         return Err("初始资金必须是有限的正数".to_string());
@@ -130,23 +145,3 @@ fn validate_config(config: &BacktestJobConfig) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_dataset_name(dataset: &str) -> Result<(), String> {
-    let mut parts = dataset.split('/');
-    let symbol = parts.next().unwrap_or_default();
-    let date_range = parts.next().unwrap_or_default();
-
-    let valid_component = |value: &str| {
-        !value.is_empty()
-            && value.trim() == value
-            && value != "."
-            && value != ".."
-            && !value.contains('\\')
-            && !value.contains(':')
-    };
-
-    if parts.next().is_some() || !valid_component(symbol) || !valid_component(date_range) {
-        return Err("dataset 必须使用有效的 股票代码/日期范围 格式".to_string());
-    }
-
-    Ok(())
-}
