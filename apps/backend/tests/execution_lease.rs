@@ -15,8 +15,11 @@ async fn create_running_attempt(pool: &PgPool, expired: bool) -> (Uuid, Uuid, Uu
         .await
         .unwrap();
 
-    let config = json!({
-        "dataset": "000001.SZ",
+        let config = json!({
+        "dataset": "00000000-0000-0000-0000-000000000002",
+        "symbols": ["000001.SZ"],
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
         "initial_cash": 100000.0,
         "commission_rate": 0.0003,
         "slippage_rate": 0.001,
@@ -26,6 +29,7 @@ async fn create_running_attempt(pool: &PgPool, expired: bool) -> (Uuid, Uuid, Uu
         "execution_mode": "next_open",
         "strategy": { "type": "buy_and_hold" }
     });
+
     sqlx::query("INSERT INTO backtest_jobs (id, task_id, config) VALUES ($1, $2, $3)")
         .bind(job_id)
         .bind(task_id)
@@ -39,6 +43,7 @@ async fn create_running_attempt(pool: &PgPool, expired: bool) -> (Uuid, Uuid, Uu
     } else {
         "NOW() + INTERVAL '60 seconds'"
     };
+    
     let query = format!(
         "INSERT INTO backtest_task_attempts \
          (id, task_id, attempt_number, status, worker_id, lease_expires_at) \

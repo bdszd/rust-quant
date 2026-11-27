@@ -165,8 +165,7 @@ impl TushareSource {
                 )));
             }
         };
-        Decimal::from_str(&text)
-            .map_err(|e| SourceError::InvalidResponse(format!("{field}: {e}")))
+        Decimal::from_str(&text).map_err(|e| SourceError::InvalidResponse(format!("{field}: {e}")))
     }
 
     fn parse(value: Value) -> Result<Vec<RawDailyBar>, SourceError> {

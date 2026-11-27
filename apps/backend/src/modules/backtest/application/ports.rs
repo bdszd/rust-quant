@@ -64,7 +64,7 @@ pub struct ClaimedBacktestJob {
 
 #[derive(Debug)]
 pub enum ClaimExecutionOutcome {
-    Claimed(ClaimedBacktestJob),
+    Claimed(Box<ClaimedBacktestJob>),
     AlreadyFinished,
     LeaseHeld,
 }

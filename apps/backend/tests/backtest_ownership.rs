@@ -28,8 +28,11 @@ async fn create_task(pool: &PgPool, user_id: Uuid) -> Uuid {
         .await
         .unwrap();
 
-    let config = serde_json::json!({
-        "dataset": "000001.SZ/20240101_20241231",
+        let config = serde_json::json!({
+        "dataset": "00000000-0000-0000-0000-000000000002",
+        "symbols": ["000001.SZ"],
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
         "initial_cash": 100000.0,
         "commission_rate": 0.0003,
         "slippage_rate": 0.001,

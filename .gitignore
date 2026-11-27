@@ -53,3 +53,5 @@ Thumbs.db
 *.sqlite3
 *.sqlite
 *.db
+# Obsidian local settings
+.obsidian/

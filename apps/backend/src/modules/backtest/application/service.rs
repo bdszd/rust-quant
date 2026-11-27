@@ -147,4 +147,3 @@ fn validate_config(config: &BacktestJobConfig) -> Result<(), String> {
 
     Ok(())
 }
-

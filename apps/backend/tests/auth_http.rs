@@ -1,4 +1,4 @@
-use std::{fs, sync::Arc};
+use std::sync::Arc;
 
 use axum::{
     body::{Body, to_bytes},
@@ -18,26 +18,26 @@ use quant_backend::{
         },
         dataset::{
             application::DatasetApplicationService,
-            infrastructure::filesystem_catalog::FilesystemDatasetCatalog,
+            infrastructure::postgres_catalog::PgDatasetCatalog,
         },
     },
     observability::metrics::Metrics,
 };
 use sqlx::PgPool;
 use tower::ServiceExt;
-use uuid::Uuid;
 
-fn test_app(pool: PgPool) -> (axum::Router, std::path::PathBuf) {
-    let data_dir = std::env::temp_dir().join(format!("rust-quant-auth-http-{}", Uuid::new_v4()));
-    fs::create_dir_all(&data_dir).unwrap();
-
+fn test_app(pool: PgPool) -> axum::Router {
     let repository = Arc::new(PgBacktestRepository::new(pool.clone()));
+
+    let market_data_repository: Arc<dyn market_data::MarketDataRepository> =
+        Arc::new(market_data::PostgresRepository::new(pool.clone()));
+
     let backtest = Arc::new(BacktestApplicationService::new(
         repository,
-        Arc::new(FilesystemDatasetCatalog::new(data_dir.clone())),
+        market_data_repository.clone(),
     ));
     let datasets = Arc::new(DatasetApplicationService::new(Arc::new(
-        FilesystemDatasetCatalog::new(data_dir.clone()),
+        PgDatasetCatalog::new(market_data_repository),
     )));
 
     let state = AppState {
@@ -50,7 +50,7 @@ fn test_app(pool: PgPool) -> (axum::Router, std::path::PathBuf) {
         login_rate_limiter: LoginRateLimiter::new(pool),
     };
 
-    (build_router(state), data_dir)
+    build_router(state)
 }
 
 async fn send(app: &axum::Router, mut request: Request<Body>) -> axum::response::Response {
@@ -71,7 +71,7 @@ fn json_request(method: &str, uri: &str, body: serde_json::Value) -> Request<Bod
 
 #[sqlx::test(migrations = "./migrations")]
 async fn auth_http_endpoints_complete_the_login_lifecycle(pool: PgPool) {
-    let (app, data_dir) = test_app(pool);
+    let app = test_app(pool);
 
     // 未登录访问受保护接口，必须在进入 Handler 前被拒绝。
     let response = send(
@@ -222,13 +222,11 @@ async fn auth_http_endpoints_complete_the_login_lifecycle(pool: PgPool) {
     )
     .await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-
-    fs::remove_dir_all(data_dir).unwrap();
 }
 
 #[sqlx::test(migrations = "./migrations")]
 async fn duplicate_registration_returns_conflict(pool: PgPool) {
-    let (app, data_dir) = test_app(pool);
+    let app = test_app(pool);
 
     let payload = serde_json::json!({
         "username": "duplicate_http_user",
@@ -245,13 +243,11 @@ async fn duplicate_registration_returns_conflict(pool: PgPool) {
 
     let second = send(&app, json_request("POST", "/api/auth/register", payload)).await;
     assert_eq!(second.status(), StatusCode::CONFLICT);
-
-    fs::remove_dir_all(data_dir).unwrap();
 }
 
 #[sqlx::test(migrations = "./migrations")]
 async fn login_does_not_reveal_disabled_account_status(pool: PgPool) {
-    let (app, data_dir) = test_app(pool.clone());
+    let app = test_app(pool.clone());
 
     let response = send(
         &app,
@@ -316,13 +312,11 @@ async fn login_does_not_reveal_disabled_account_status(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(disabled_body, invalid_password_body);
-
-    fs::remove_dir_all(data_dir).unwrap();
 }
 
 #[sqlx::test(migrations = "./migrations")]
 async fn login_is_rate_limited_after_ten_attempts(pool: PgPool) {
-    let (app, data_dir) = test_app(pool);
+    let app = test_app(pool);
 
     let registration = send(
         &app,
@@ -373,13 +367,11 @@ async fn login_is_rate_limited_after_ten_attempts(pool: PgPool) {
     .await;
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
     assert!(response.headers().get(header::RETRY_AFTER).is_some());
-
-    fs::remove_dir_all(data_dir).unwrap();
 }
 
 #[sqlx::test(migrations = "./migrations")]
 async fn cors_only_allows_configured_origins(pool: PgPool) {
-    let (app, data_dir) = test_app(pool);
+    let app = test_app(pool);
 
     let allowed = send(
         &app,
@@ -421,6 +413,4 @@ async fn cors_only_allows_configured_origins(pool: PgPool) {
             .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
             .is_none()
     );
-
-    fs::remove_dir_all(data_dir).unwrap();
 }

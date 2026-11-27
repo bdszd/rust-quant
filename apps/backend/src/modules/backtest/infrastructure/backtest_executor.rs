@@ -94,7 +94,7 @@ fn execute_loaded_bars(
         StrategyConfig::SmaCross {
             short_window,
             long_window,
-        } => Box::new(SmaCrossStrategy::new(*short_window, *long_window))
+        } => Box::new(SmaCrossStrategy::new(*short_window, *long_window)),
         StrategyConfig::BuyAndHold => Box::new(BuyAndHoldStrategy::new()),
     };
 

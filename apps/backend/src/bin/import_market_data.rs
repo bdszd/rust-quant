@@ -10,7 +10,7 @@ use std::{
 use rust_decimal::Decimal;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
-use sqlx::{postgres::PgPoolOptions, PgPool, Row};
+use sqlx::{PgPool, Row, postgres::PgPoolOptions};
 use uuid::Uuid;
 
 const DATASET_ID: &str = "00000000-0000-0000-0000-000000000002";
@@ -18,8 +18,17 @@ const DATASET_NAME: &str = "000001.SZ 2006-2026 日线行情";
 const BATCH_KEY: &str = "tushare-000001.SZ-20060101-20261106-v1";
 
 const RAW_HEADERS: &[&str] = &[
-    "ts_code", "trade_date", "open", "high", "low", "close",
-    "pre_close", "change", "pct_chg", "vol", "amount",
+    "ts_code",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "pre_close",
+    "change",
+    "pct_chg",
+    "vol",
+    "amount",
 ];
 const BAR_HEADERS: &[&str] = &[
     "symbol", "date", "open", "high", "low", "close", "volume", "amount",
@@ -53,12 +62,16 @@ struct Snapshot {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
-    let commit = match args.as_slice() {
-        [] => false,
-        [flag] if flag == "--check" => false,
-        [flag] if flag == "--commit" => true,
-        _ => return Err("用法：cargo run -p quant-backend --bin import_market_data -- [--check|--commit]".into()),
-    };
+    let commit =
+        match args.as_slice() {
+            [] => false,
+            [flag] if flag == "--check" => false,
+            [flag] if flag == "--commit" => true,
+            _ => return Err(
+                "用法：cargo run -p quant-backend --bin import_market_data -- [--check|--commit]"
+                    .into(),
+            ),
+        };
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let raw_path = root.join("data/raw/tushare/000001.SZ/20060101_20261106.csv");
@@ -68,7 +81,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("本地文件核对通过：");
     println!("  Raw 行数：{}", snapshot.raw.len());
     println!("  标准行情行数：{}", snapshot.bars.len());
-    println!("  日期范围：{} 至 {}", snapshot.bars.first().unwrap().trade_date, snapshot.bars.last().unwrap().trade_date);
+    println!(
+        "  日期范围：{} 至 {}",
+        snapshot.bars.first().unwrap().trade_date,
+        snapshot.bars.last().unwrap().trade_date
+    );
     println!("  Raw SHA256：{}", snapshot.raw_sha256);
     println!("  Bars SHA256：{}", snapshot.bars_sha256);
 
@@ -78,8 +95,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let database_url = env::var("DATABASE_URL")
-        .map_err(|_| "导入模式必须设置 DATABASE_URL")?;
+    let database_url = env::var("DATABASE_URL").map_err(|_| "导入模式必须设置 DATABASE_URL")?;
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.block_on(import(&database_url, snapshot))?;
     Ok(())
@@ -102,7 +118,11 @@ fn load_and_validate(raw_path: &Path, bars_path: &Path) -> Result<Snapshot, Box<
         if values.len() != RAW_HEADERS.len() {
             return Err(format!("Raw 第 {} 行列数不正确", index + 2).into());
         }
-        let fields: HashMap<&str, &str> = RAW_HEADERS.iter().copied().zip(values.iter().copied()).collect();
+        let fields: HashMap<&str, &str> = RAW_HEADERS
+            .iter()
+            .copied()
+            .zip(values.iter().copied())
+            .collect();
         let symbol = required(fields["ts_code"], "ts_code", index)?;
         let trade_date = raw_date(fields["trade_date"], index)?;
 
@@ -128,13 +148,22 @@ fn load_and_validate(raw_path: &Path, bars_path: &Path) -> Result<Snapshot, Box<
         if values.len() != BAR_HEADERS.len() {
             return Err(format!("Cleaned 第 {} 行列数不正确", index + 2).into());
         }
-        let fields: HashMap<&str, &str> = BAR_HEADERS.iter().copied().zip(values.iter().copied()).collect();
+        let fields: HashMap<&str, &str> = BAR_HEADERS
+            .iter()
+            .copied()
+            .zip(values.iter().copied())
+            .collect();
         let symbol = required(fields["symbol"], "symbol", index)?.to_string();
         let trade_date = clean_date(fields["date"], index)?;
         let volume_decimal = decimal(fields["volume"], "volume", index)?;
         let rounded_volume = volume_decimal.round();
         if (volume_decimal - rounded_volume).abs() > Decimal::new(1, 6) {
-            return Err(format!("Cleaned 第 {} 行 volume 不是整数股数：{}", index + 2, fields["volume"]).into());
+            return Err(format!(
+                "Cleaned 第 {} 行 volume 不是整数股数：{}",
+                index + 2,
+                fields["volume"]
+            )
+            .into());
         }
         let volume = rounded_volume.to_string().parse::<i64>()?;
         if volume < 0 {
@@ -154,7 +183,12 @@ fn load_and_validate(raw_path: &Path, bars_path: &Path) -> Result<Snapshot, Box<
     }
 
     if raw.is_empty() || raw.len() != bars.len() {
-        return Err(format!("Raw/Cleaned 行数不一致或为空：Raw={}，Cleaned={}", raw.len(), bars.len()).into());
+        return Err(format!(
+            "Raw/Cleaned 行数不一致或为空：Raw={}，Cleaned={}",
+            raw.len(),
+            bars.len()
+        )
+        .into());
     }
 
     for (index, (raw_row, bar)) in raw.iter().zip(&bars).enumerate() {
@@ -162,7 +196,11 @@ fn load_and_validate(raw_path: &Path, bars_path: &Path) -> Result<Snapshot, Box<
             return Err(format!("第 {} 条记录不是目标股票 000001.SZ", index + 1).into());
         }
         if raw_row.symbol != bar.symbol || raw_row.trade_date != bar.trade_date {
-            return Err(format!("第 {} 条 Raw 与 Cleaned 的股票代码或交易日期不一致", index + 1).into());
+            return Err(format!(
+                "第 {} 条 Raw 与 Cleaned 的股票代码或交易日期不一致",
+                index + 1
+            )
+            .into());
         }
         if index > 0 && bars[index - 1].trade_date >= bar.trade_date {
             return Err(format!("Cleaned 日期未严格递增，位置：{}", index + 1).into());
@@ -173,9 +211,14 @@ fn load_and_validate(raw_path: &Path, bars_path: &Path) -> Result<Snapshot, Box<
         let raw_low = decimal_from_payload(&raw_row.payload, "low", index)?;
         let raw_close = decimal_from_payload(&raw_row.payload, "close", index)?;
         let raw_volume = decimal_from_payload(&raw_row.payload, "vol", index)? * Decimal::from(100);
-        let raw_amount = decimal_from_payload(&raw_row.payload, "amount", index)? * Decimal::from(1000);
+        let raw_amount =
+            decimal_from_payload(&raw_row.payload, "amount", index)? * Decimal::from(1000);
 
-        if raw_open != bar.open || raw_high != bar.high || raw_low != bar.low || raw_close != bar.close {
+        if raw_open != bar.open
+            || raw_high != bar.high
+            || raw_low != bar.low
+            || raw_close != bar.close
+        {
             return Err(format!("第 {} 条 Raw 与 Cleaned 的 OHLC 不一致", index + 1).into());
         }
         if (raw_volume - Decimal::from(bar.volume)).abs() > Decimal::new(1, 5) {
@@ -195,10 +238,19 @@ fn load_and_validate(raw_path: &Path, bars_path: &Path) -> Result<Snapshot, Box<
         return Err("数据日期范围不符合预期，要求 2006-01-04 至 2026-11-06".into());
     }
 
-    Ok(Snapshot { raw, bars, raw_sha256, bars_sha256 })
+    Ok(Snapshot {
+        raw,
+        bars,
+        raw_sha256,
+        bars_sha256,
+    })
 }
 
-fn ensure_headers(actual: &csv::StringRecord, expected: &[&str], label: &str) -> Result<(), Box<dyn Error>> {
+fn ensure_headers(
+    actual: &csv::StringRecord,
+    expected: &[&str],
+    label: &str,
+) -> Result<(), Box<dyn Error>> {
     let actual: Vec<&str> = actual.iter().collect();
     if actual != expected {
         return Err(format!("{label} CSV 表头不符合预期：{actual:?}").into());
@@ -218,7 +270,11 @@ fn decimal(value: &str, field: &str, index: usize) -> Result<Decimal, Box<dyn Er
         .map_err(|_| format!("第 {} 行字段 {field} 不是有效数字：{value}", index + 2).into())
 }
 
-fn decimal_from_payload(payload: &Value, field: &str, index: usize) -> Result<Decimal, Box<dyn Error>> {
+fn decimal_from_payload(
+    payload: &Value,
+    field: &str,
+    index: usize,
+) -> Result<Decimal, Box<dyn Error>> {
     let value = payload[field].as_str().ok_or("Raw payload 缺少数字字段")?;
     decimal(value, field, index)
 }
@@ -227,11 +283,19 @@ fn raw_date(value: &str, index: usize) -> Result<String, Box<dyn Error>> {
     if value.len() != 8 || !value.chars().all(|c| c.is_ascii_digit()) {
         return Err(format!("Raw 第 {} 行交易日期格式错误：{value}", index + 2).into());
     }
-    Ok(format!("{}-{}-{}", &value[0..4], &value[4..6], &value[6..8]))
+    Ok(format!(
+        "{}-{}-{}",
+        &value[0..4],
+        &value[4..6],
+        &value[6..8]
+    ))
 }
 
 fn clean_date(value: &str, index: usize) -> Result<String, Box<dyn Error>> {
-    if value.len() != 10 || value.as_bytes().get(4) != Some(&b'-') || value.as_bytes().get(7) != Some(&b'-') {
+    if value.len() != 10
+        || value.as_bytes().get(4) != Some(&b'-')
+        || value.as_bytes().get(7) != Some(&b'-')
+    {
         return Err(format!("Cleaned 第 {} 行交易日期格式错误：{value}", index + 2).into());
     }
     Ok(value.to_string())
@@ -243,7 +307,10 @@ fn hex_sha256(bytes: &[u8]) -> String {
 }
 
 async fn import(database_url: &str, snapshot: Snapshot) -> Result<(), Box<dyn Error>> {
-    let pool = PgPoolOptions::new().max_connections(2).connect(database_url).await?;
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(database_url)
+        .await?;
     import_transaction(&pool, snapshot).await?;
     pool.close().await;
     Ok(())
@@ -280,13 +347,16 @@ async fn import_transaction(pool: &PgPool, snapshot: Snapshot) -> Result<(), Box
             println!("该文件快照已经导入过，指纹和行数一致；本次不重复写入。");
             return Ok(());
         }
-        return Err("导入批次已存在，但文件指纹或行数不同。为避免覆盖/追加错误数据，已中止。".into());
+        return Err(
+            "导入批次已存在，但文件指纹或行数不同。为避免覆盖/追加错误数据，已中止。".into(),
+        );
     }
 
-    let dataset_exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM market_datasets WHERE id = $1)")
-        .bind(dataset_id)
-        .fetch_one(&mut *tx)
-        .await?;
+    let dataset_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM market_datasets WHERE id = $1)")
+            .bind(dataset_id)
+            .fetch_one(&mut *tx)
+            .await?;
     if dataset_exists {
         return Err("目标 dataset_id 已存在，但没有对应导入批次记录。为避免重复追加 Raw 或混入旧数据，已中止；请先人工检查数据库。".into());
     }
@@ -301,9 +371,11 @@ async fn import_transaction(pool: &PgPool, snapshot: Snapshot) -> Result<(), Box
     .execute(&mut *tx)
     .await?;
 
-    sqlx::query("INSERT INTO market_symbols (symbol) VALUES ('000001.SZ') ON CONFLICT (symbol) DO NOTHING")
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "INSERT INTO market_symbols (symbol) VALUES ('000001.SZ') ON CONFLICT (symbol) DO NOTHING",
+    )
+    .execute(&mut *tx)
+    .await?;
 
     for row in &snapshot.raw {
         sqlx::query(
@@ -361,6 +433,10 @@ async fn import_transaction(pool: &PgPool, snapshot: Snapshot) -> Result<(), Box
 
     tx.commit().await?;
     println!("导入事务已提交：dataset_id={DATASET_ID}");
-    println!("Raw rows={}，standard rows={}", snapshot.raw.len(), snapshot.bars.len());
+    println!(
+        "Raw rows={}，standard rows={}",
+        snapshot.raw.len(),
+        snapshot.bars.len()
+    );
     Ok(())
 }

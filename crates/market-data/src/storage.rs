@@ -41,10 +41,8 @@ pub trait MarketDataRepository: Send + Sync {
         bars: &[DailyBar],
     ) -> Result<usize, StorageError>;
 
-    async fn query_daily_bars(
-        &self,
-        request: &QueryRequest,
-    ) -> Result<Vec<DailyBar>, StorageError>;
+    async fn query_daily_bars(&self, request: &QueryRequest)
+    -> Result<Vec<DailyBar>, StorageError>;
 }
 
 #[derive(Clone)]
@@ -165,12 +163,10 @@ impl MarketDataRepository for PostgresRepository {
 
         let mut tx = self.pool.begin().await?;
         for bar in bars {
-            sqlx::query(
-                "INSERT INTO market_symbols(symbol) VALUES($1) ON CONFLICT DO NOTHING",
-            )
-            .bind(bar.symbol.as_str())
-            .execute(&mut *tx)
-            .await?;
+            sqlx::query("INSERT INTO market_symbols(symbol) VALUES($1) ON CONFLICT DO NOTHING")
+                .bind(bar.symbol.as_str())
+                .execute(&mut *tx)
+                .await?;
 
             sqlx::query(
                 r#"

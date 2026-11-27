@@ -12,7 +12,9 @@ impl Symbol {
         let value = value.into().trim().to_ascii_uppercase();
         if value.is_empty()
             || value.len() > 20
-            || !value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.')
+            || !value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'.')
         {
             return Err(format!("非法股票代码：{value}"));
         }

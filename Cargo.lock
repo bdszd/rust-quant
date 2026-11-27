@@ -350,7 +350,6 @@ version = "0.1.0"
 dependencies = [
  "csv",
  "serde",
- "serde_json",
  "trading-core",
 ]
 
@@ -1938,15 +1937,21 @@ dependencies = [
 name = "quant-backend"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "backtest-core",
+ "csv",
  "futures-util",
  "identity",
  "lapin",
+ "market-data",
+ "rust_decimal",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "tokio",
+ "tower",
  "tower-http",
  "uuid",
 ]

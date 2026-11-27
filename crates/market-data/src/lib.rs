@@ -6,8 +6,8 @@ pub mod storage;
 pub mod validation;
 
 pub use domain::{
-    CreateDatasetRequest, DailyBar, DatasetOwner, DatasetSource, IngestionRequest,
-    IngestionResult, QueryRequest, RawDailyBar, Symbol,
+    CreateDatasetRequest, DailyBar, DatasetOwner, DatasetSource, IngestionRequest, IngestionResult,
+    QueryRequest, RawDailyBar, Symbol,
 };
 pub use service::{MarketDataError, MarketDataService};
 pub use source::{CsvSource, MarketDataSource, TushareSource};

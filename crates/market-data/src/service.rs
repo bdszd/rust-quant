@@ -1,7 +1,5 @@
 use crate::{
-    domain::{
-        CreateDatasetRequest, DailyBar, IngestionRequest, IngestionResult, QueryRequest,
-    },
+    domain::{CreateDatasetRequest, DailyBar, IngestionRequest, IngestionResult, QueryRequest},
     normalize::{normalize_daily_bar, normalize_date},
     source::{MarketDataSource, SourceError},
     storage::{DatasetInfo, MarketDataRepository, StorageError},
@@ -61,9 +59,7 @@ impl MarketDataService {
         let (start, end) =
             Self::normalize_and_validate_range(&request.start_date, &request.end_date)?;
         if request.symbols.is_empty() {
-            return Err(MarketDataError::InvalidRequest(
-                "symbols 不能为空".into(),
-            ));
+            return Err(MarketDataError::InvalidRequest("symbols 不能为空".into()));
         }
 
         // 数据源只接收标准化后的日期，避免不同数据源各自处理日期格式。
@@ -138,9 +134,7 @@ impl MarketDataService {
         let (start, end) =
             Self::normalize_and_validate_range(&request.start_date, &request.end_date)?;
         if request.symbols.is_empty() {
-            return Err(MarketDataError::InvalidRequest(
-                "symbols 不能为空".into(),
-            ));
+            return Err(MarketDataError::InvalidRequest("symbols 不能为空".into()));
         }
 
         // Repository 接收统一格式的日期，不依赖调用方传入的格式。

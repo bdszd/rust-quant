@@ -5,9 +5,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use identity::{
-    user::{UserRepository, UserStatus},
-};
+use identity::user::{UserRepository, UserStatus};
 use uuid::Uuid;
 
 use crate::{
@@ -62,7 +60,10 @@ pub async fn require_auth(
         .map_err(|_| api_error(StatusCode::INTERNAL_SERVER_ERROR, "读取用户信息失败"))?;
 
     let Some(user) = user else {
-        return Err(api_error(StatusCode::UNAUTHORIZED, "用户不存在或登录状态已失效"));
+        return Err(api_error(
+            StatusCode::UNAUTHORIZED,
+            "用户不存在或登录状态已失效",
+        ));
     };
 
     if user.status != UserStatus::Active {

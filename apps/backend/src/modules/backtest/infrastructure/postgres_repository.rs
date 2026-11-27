@@ -499,17 +499,19 @@ impl PgBacktestRepository {
             .await
             .map_err(|error| format!("提交任务认领事务失败：{error}"))?;
 
-        Ok(ClaimExecutionOutcome::Claimed(ClaimedBacktestJob {
-            task_id,
-            attempt: BacktestAttempt {
-                id: attempt_id,
+        Ok(ClaimExecutionOutcome::Claimed(Box::new(
+            ClaimedBacktestJob {
                 task_id,
-                attempt_number,
-                status: AttemptStatus::Running,
-                error: None,
+                attempt: BacktestAttempt {
+                    id: attempt_id,
+                    task_id,
+                    attempt_number,
+                    status: AttemptStatus::Running,
+                    error: None,
+                },
+                config,
             },
-            config,
-        }))
+        )))
     }
 
     /// 延长当前 Worker 持有的执行租约。

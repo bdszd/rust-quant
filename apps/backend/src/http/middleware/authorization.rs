@@ -1,17 +1,9 @@
-use axum::{
-    Extension,
-    extract::Request,
-    http::StatusCode,
-    middleware::Next,
-    response::Response,
-};
+use axum::{Extension, extract::Request, http::StatusCode, middleware::Next, response::Response};
 use identity::permission::{AuthorizationError, require_admin};
 
-use crate::{
-    http::{
-        error::{ApiError, api_error},
-        middleware::authentication::CurrentUser,
-    },
+use crate::http::{
+    error::{ApiError, api_error},
+    middleware::authentication::CurrentUser,
 };
 
 /// 只允许平台管理员访问后续路由。
