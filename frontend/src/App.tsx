@@ -5,7 +5,7 @@ import {
   TrendingUp, Wallet, XCircle
 } from "lucide-react";
 
-type Dataset = { name: string; rows: number };
+type Dataset = { id: string; name: string; rows: number };
 type StrategyType = "sma_cross" | "buy_and_hold";
 type TaskStatus = "queued" | "running" | "succeeded" | "failed";
 type Snapshot = {
@@ -44,6 +44,9 @@ export default function App() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [history, setHistory] = useState<BacktestTask[]>([]);
   const [dataset, setDataset] = useState("");
+  const [symbol, setSymbol] = useState("000001.SZ");
+  const [startDate, setStartDate] = useState("2006-01-04");
+  const [endDate, setEndDate] = useState("2026-11-06");
   const [cash, setCash] = useState("100000");
   const [commission, setCommission] = useState("0.0003");
   const [slippage, setSlippage] = useState("0.0005");
@@ -74,7 +77,7 @@ export default function App() {
       const tasks: BacktestTask[] = await historyResponse.json();
       setDatasets(items);
       setHistory(tasks);
-      setDataset(current => items.some(item => item.name === current) ? current : items[0]?.name ?? "");
+      setDataset(current => items.some(item => item.id === current) ? current : items[0]?.id ?? "");
     } catch (e) {
       setApiOnline(false);
       setError(e instanceof Error ? e.message : "无法连接后端");
@@ -117,7 +120,8 @@ export default function App() {
       const response = await fetch("/api/backtests", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dataset, initial_cash: initialCash, commission_rate: commissionRate,
+          dataset_id: dataset, symbols: [symbol], start_date: startDate, end_date: endDate,
+          initial_cash: initialCash, commission_rate: commissionRate,
           slippage_rate: slippageRate, execution_mode: mode, strategy,
           lot_size: sharesPerLot, stamp_duty_rate: stampDutyRate,
           min_commission: minimumCommission,
@@ -155,7 +159,7 @@ export default function App() {
   }
 
   const completed = history.filter(item => item.status === "succeeded" && item.result);
-  const selectedDataset = datasets.find(item => item.name === dataset);
+  const selectedDataset = datasets.find(item => item.id === dataset);
   const compareResults = useMemo(
     () => compareIds.map(id => history.find(item => item.id === id)?.result).filter((item): item is BacktestResult => Boolean(item)),
     [compareIds, history]
@@ -202,10 +206,15 @@ export default function App() {
                 <Field label="行情数据集">
                   <select value={dataset} onChange={e => setDataset(e.target.value)} required>
                     <option value="">选择一个数据集</option>
-                    {datasets.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}
+                    {datasets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
                 </Field>
-                <div className="dataset-hint"><Database size={14}/>{selectedDataset ? `包含 ${selectedDataset.rows.toLocaleString()} 条日线记录` : "先将清洗后的 bars.csv 放入数据目录"}</div>
+                <div className="dataset-hint"><Database size={14}/>{selectedDataset ? `包含 ${selectedDataset.rows.toLocaleString()} 条日线记录` : "行情从 PostgreSQL 数据库读取"}</div>
+                <Field label="股票代码"><input value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} required /></Field>
+                <div className="two-col">
+                  <Field label="开始日期"><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required /></Field>
+                  <Field label="结束日期"><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required /></Field>
+                </div>
                 <Field label="初始资金"><input type="number" min="1" step="any" value={cash} onChange={e => setCash(e.target.value)}/></Field>
                 <div className="two-col">
                   <Field label="手续费率"><input type="number" min="0" max="0.999999" step="any" value={commission} onChange={e => setCommission(e.target.value)}/><small>0.0003 = 0.03%</small></Field>
@@ -236,14 +245,14 @@ export default function App() {
                 {task && <div className="task-state"><span className={`state-badge ${task.status}`}>{task.status}</span><span>{task.id}</span></div>}
               </form>
             </div>
-            <div className="panel guidance-panel"><div className="illustration"><BarChart3 size={34}/></div><h2>从行情到回测报告</h2><p>选择一个数据集并设置资金、费用和策略参数。任务会进入后端队列，完成后自动展示结果。</p><div className="flow"><span>01 参数配置</span><i/><span>02 Rust 引擎</span><i/><span>03 绩效报告</span></div><div className="note-box">当前 V1 聚焦单股票日线回测。成交价格、整手数量、最低佣金、卖出印花税、滑点和每日账户估值均由回测核心统一计算。</div></div>
+            <div className="panel guidance-panel"><div className="illustration"><BarChart3 size={34}/></div><h2>从行情到回测报告</h2><p>选择一个数据集并设置资金、费用和策略参数。任务会进入后端队列，完成后自动展示结果。</p><div className="flow"><span>01 参数配置</span><i/><span>02 Rust 引擎</span><i/><span>03 绩效报告</span></div><div className="note-box">当前回测策略执行器每次处理一个股票的日线行情。成交价格、整手数量、最低佣金、卖出印花税、滑点和每日账户估值均由回测核心统一计算。</div></div>
           </section>
         )}
 
         {page === "datasets" && <section className="panel">
-          <PanelTitle eyebrow="MARKET DATA" title="本地行情数据集"/>
-          <p className="muted-copy">后端扫描清洗后的数据目录。每个数据集包含一只股票在指定日期范围内的日线 Bar。</p>
-          {datasets.length === 0 ? <Empty title="还没有可用数据集" text="请检查 data/cleaned 目录以及对应的 bars.csv 和 quality_report.json。"/> :
+          <PanelTitle eyebrow="MARKET DATA" title="数据库行情数据集"/>
+          <p className="muted-copy">后端从 PostgreSQL 的行情数据表读取可用数据集。</p>
+          {datasets.length === 0 ? <Empty title="还没有可用数据集" text="请先将行情数据导入 PostgreSQL。"/> :
             <div className="data-grid">{datasets.map(item => <div className="dataset-card" key={item.name}><div className="dataset-icon"><Database size={18}/></div><div><b>{item.name.split("/")[0]}</b><small>{item.name.split("/")[1]}</small></div><strong>{item.rows.toLocaleString()} <small>bars</small></strong><button className="button button-ghost" onClick={() => {setDataset(item.name);setPage("new");}}>用于回测</button></div>)}</div>}
         </section>}
 
@@ -266,7 +275,7 @@ export default function App() {
 
         {page === "overview" && <>
           {!result ? <section className="overview-grid">
-            <div className="panel welcome-panel"><span className="kicker">YOUR RESEARCH SPACE</span><h2>把策略想法变成可验证的回测</h2><p>从本地 A 股日线数据开始，配置策略并运行 Rust 回测引擎。所有结果都会保存，方便后续比较。</p><button className="button button-primary" onClick={() => setPage("new")}><Play size={16}/>创建第一次回测</button></div>
+            <div className="panel welcome-panel"><span className="kicker">YOUR RESEARCH SPACE</span><h2>把策略想法变成可验证的回测</h2><p>从 PostgreSQL 中的 A 股日线数据开始，配置策略并运行 Rust 回测引擎。所有结果都会保存，方便后续比较。</p><button className="button button-primary" onClick={() => setPage("new")}><Play size={16}/>创建第一次回测</button></div>
             <div className="panel quick-stats"><div><span>数据集</span><b>{datasets.length}</b></div><div><span>已完成回测</span><b>{completed.length}</b></div><div><span>任务总数</span><b>{history.length}</b></div></div>
             <div className="panel recent-panel"><PanelTitle eyebrow="RECENT ACTIVITY" title="最近回测"/>{history.slice(0,5).length ? history.slice(0,5).map(item => <button className="recent-row" key={item.id} onClick={() => void openTask(item)}><span><b>{strategyName(item.strategy)}</b><small>{item.dataset} · {item.id.slice(-8)}</small></span><span className={`state-badge ${item.status}`}>{item.status}</span></button>) : <Empty title="暂无任务" text="创建回测后，最近任务会显示在这里。"/>}</div>
           </section> : <ResultView result={result} task={task} onBack={() => setPage("history")}/>}
