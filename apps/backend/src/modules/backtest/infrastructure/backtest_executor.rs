@@ -94,9 +94,7 @@ fn execute_loaded_bars(
         StrategyConfig::SmaCross {
             short_window,
             long_window,
-        } => {
-            Box::new(SmaCrossStrategy::new(*short_window, *long_window))
-        }
+        } => Box::new(SmaCrossStrategy::new(*short_window, *long_window))
         StrategyConfig::BuyAndHold => Box::new(BuyAndHoldStrategy::new()),
     };
 
@@ -197,6 +195,6 @@ impl BacktestExecutor for BacktestCoreExecutor {
         let metrics = self.metrics.clone();
         tokio::task::spawn_blocking(move || execute_loaded_bars(task_id, config, bars, metrics))
             .await
-        .map_err(|error| format!("回测计算线程异常：{error}"))?
+            .map_err(|error| format!("回测计算线程异常：{error}"))?
     }
 }
