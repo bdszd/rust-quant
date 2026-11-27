@@ -50,13 +50,30 @@ fn to_engine_bars(rows: Vec<market_data::DailyBar>) -> Result<Vec<Bar>, String> 
             Ok(Bar {
                 symbol: row.symbol.to_string(),
                 date: row.trade_date,
-                open: row.open.to_f64().ok_or_else(|| "开盘价无法转换为 f64".to_string())?,
-                high: row.high.to_f64().ok_or_else(|| "最高价无法转换为 f64".to_string())?,
-                low: row.low.to_f64().ok_or_else(|| "最低价无法转换为 f64".to_string())?,
-                close: row.close.to_f64().ok_or_else(|| "收盘价无法转换为 f64".to_string())?,
+                open: row
+                    .open
+                    .to_f64()
+                    .ok_or_else(|| "开盘价无法转换为 f64".to_string())?,
+                high: row
+                    .high
+                    .to_f64()
+                    .ok_or_else(|| "最高价无法转换为 f64".to_string())?,
+                low: row
+                    .low
+                    .to_f64()
+                    .ok_or_else(|| "最低价无法转换为 f64".to_string())?,
+                close: row
+                    .close
+                    .to_f64()
+                    .ok_or_else(|| "收盘价无法转换为 f64".to_string())?,
                 volume: row.volume as f64,
-                amount: row.amount
-                    .map(|value| value.to_f64().ok_or_else(|| "成交额无法转换为 f64".to_string()))
+                amount: row
+                    .amount
+                    .map(|value| {
+                        value
+                            .to_f64()
+                            .ok_or_else(|| "成交额无法转换为 f64".to_string())
+                    })
                     .transpose()?,
             })
         })
@@ -74,7 +91,10 @@ fn execute_loaded_bars(
     metrics.record_duration("data_validate", validate_started.elapsed());
 
     let mut strategy: Box<dyn Strategy> = match &config.strategy {
-        StrategyConfig::SmaCross { short_window, long_window } => {
+        StrategyConfig::SmaCross {
+            short_window,
+            long_window,
+        } => {
             Box::new(SmaCrossStrategy::new(*short_window, *long_window))
         }
         StrategyConfig::BuyAndHold => Box::new(BuyAndHoldStrategy::new()),
@@ -88,8 +108,12 @@ fn execute_loaded_bars(
         stamp_duty_rate: config.stamp_duty_rate,
         min_commission: config.min_commission,
         execution_mode: match config.execution_mode {
-            crate::modules::backtest::domain::ExecutionMode::NextOpen => CoreExecutionMode::NextOpen,
-            crate::modules::backtest::domain::ExecutionMode::NextClose => CoreExecutionMode::NextClose,
+            crate::modules::backtest::domain::ExecutionMode::NextOpen => {
+                CoreExecutionMode::NextOpen
+            }
+            crate::modules::backtest::domain::ExecutionMode::NextClose => {
+                CoreExecutionMode::NextClose
+            }
         },
     };
 
@@ -101,8 +125,13 @@ fn execute_loaded_bars(
     metrics.record_duration("engine_execute", engine_started.elapsed());
 
     let (strategy_name, short_window, long_window) = match config.strategy {
-        StrategyConfig::SmaCross { short_window, long_window } => (
-            "sma_cross".to_string(), Some(short_window), Some(long_window),
+        StrategyConfig::SmaCross {
+            short_window,
+            long_window,
+        } => (
+            "sma_cross".to_string(),
+            Some(short_window),
+            Some(long_window),
         ),
         StrategyConfig::BuyAndHold => ("buy_and_hold".to_string(), None, None),
     };
@@ -125,7 +154,10 @@ pub struct BacktestCoreExecutor {
 
 impl BacktestCoreExecutor {
     pub fn new(market_data: Arc<dyn MarketDataRepository>, metrics: Arc<Metrics>) -> Self {
-        Self { market_data, metrics }
+        Self {
+            market_data,
+            metrics,
+        }
     }
 }
 
@@ -136,9 +168,14 @@ impl BacktestExecutor for BacktestCoreExecutor {
         task_id: Uuid,
         config: BacktestJobConfig,
     ) -> Result<BacktestRunResult, String> {
-        let symbol = Symbol::new(config.symbols.first()
-            .ok_or_else(|| "symbols 不能为空".to_string())?.clone())
-            .map_err(|error| format!("标的代码无效：{error}"))?;
+        let symbol = Symbol::new(
+            config
+                .symbols
+                .first()
+                .ok_or_else(|| "symbols 不能为空".to_string())?
+                .clone(),
+        )
+        .map_err(|error| format!("标的代码无效：{error}"))?;
 
         let query = QueryRequest {
             dataset_id: config.dataset.clone(),
@@ -148,16 +185,18 @@ impl BacktestExecutor for BacktestCoreExecutor {
         };
 
         let load_started = Instant::now();
-        let rows = self.market_data.query_daily_bars(&query).await
+        let rows = self
+            .market_data
+            .query_daily_bars(&query)
+            .await
             .map_err(|error| format!("从 PostgreSQL 查询行情失败：{error}"))?;
-        self.metrics.record_duration("data_load", load_started.elapsed());
+        self.metrics
+            .record_duration("data_load", load_started.elapsed());
 
         let bars = to_engine_bars(rows)?;
         let metrics = self.metrics.clone();
-        tokio::task::spawn_blocking(move || {
-            execute_loaded_bars(task_id, config, bars, metrics)
-        })
-        .await
+        tokio::task::spawn_blocking(move || execute_loaded_bars(task_id, config, bars, metrics))
+            .await
         .map_err(|error| format!("回测计算线程异常：{error}"))?
     }
 }
