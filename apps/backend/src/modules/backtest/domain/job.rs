@@ -22,7 +22,7 @@ pub enum StrategyConfig {
 
 /// 一次回测的不可变执行配置。
 ///
-/// 注意：这里不保存 data_dir 等机器本地路径。数据目录属于运行环境配置。
+/// 行情选择条件随任务一起持久化，Worker 重试时仍会查询相同的数据集、标的和日期范围。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BacktestJobConfig {
     /// PostgreSQL market_datasets.id (UUID string).
