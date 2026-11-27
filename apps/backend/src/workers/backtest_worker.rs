@@ -323,13 +323,11 @@ async fn process_delivery(
     let execution_executor = executor.clone();
     let execution_started = Instant::now();
 
-    let execution =
-        tokio::task::spawn_blocking(move || execution_executor.execute(task_id, config)).await;
+    let execution = execution_executor.execute(task_id, config).await.map_err(|error| error);
 
     let execution_duration_ms = duration_to_ms(execution_started.elapsed());
 
-    // 心跳明确报告租约已失效时，不再尝试写入结果；消息重新入队，
-    // 由当前租约持有者完成任务。spawn_blocking 本身无法被强制中断。
+    // 心跳明确报告租约已失效时，不再尝试写入结果；消息重新入队。
     if lease_lost.load(Ordering::Acquire) {
         let _ = heartbeat_stop_tx.send(true);
         let _ = heartbeat_handle.await;
@@ -344,9 +342,9 @@ async fn process_delivery(
             .is_ok();
     }
 
-    let task_succeeded = matches!(&execution, Ok(Ok(_)));
+    let task_succeeded = execution.is_ok();
     let persistence_result = match execution {
-        Ok(Ok(result)) => match serde_json::to_value(&result) {
+        Ok(result) => match serde_json::to_value(&result) {
             Ok(payload) => {
                 persist_success(
                     repository,
@@ -371,20 +369,8 @@ async fn process_delivery(
                 .await
             }
         },
-        Ok(Err(message)) => {
+        Err(message) => {
             eprintln!("任务 {task_id} 执行失败：{message}");
-            persist_failure(
-                repository,
-                attempt_id,
-                task_id,
-                &worker_id,
-                &message,
-                Some(execution_duration_ms),
-            )
-            .await
-        }
-        Err(join_error) => {
-            let message = format!("回测执行线程异常：{join_error}");
             persist_failure(
                 repository,
                 attempt_id,
