@@ -22,7 +22,10 @@ pub struct BacktestApplicationService {
 }
 
 impl BacktestApplicationService {
-    pub fn new(repository: Arc<dyn BacktestRepository>, datasets: Arc<dyn MarketDataRepository>) -> Self {
+    pub fn new(
+        repository: Arc<dyn BacktestRepository>,
+        datasets: Arc<dyn MarketDataRepository>,
+    ) -> Self {
         Self {
             repository,
             datasets,
