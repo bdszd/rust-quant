@@ -69,7 +69,8 @@ pub fn normalize_daily_bar(raw: RawDailyBar) -> Result<DailyBar, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{AmountUnit, PriceUnit, RawDailyBar, VolumeUnit};
+    use crate::domain::{AmountUnit, DatasetSource, PriceUnit, RawDailyBar, VolumeUnit};
+    use serde_json::json;
     use std::str::FromStr;
 
     fn decimal(value: &str) -> Decimal {
@@ -89,6 +90,12 @@ mod tests {
             price_unit: PriceUnit::Cny,
             volume_unit,
             amount_unit: Some(AmountUnit::ThousandCny),
+            source: DatasetSource::Tushare,
+            raw_payload: json!({
+                "ts_code": "000001.SZ",
+                "trade_date": "20240102",
+                "vol": volume
+            }),
         }
     }
 
