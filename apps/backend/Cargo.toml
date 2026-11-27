@@ -13,6 +13,7 @@ backtest-core = { path = "../../crates/backtest-core" }
 csv = "1"
 futures-util = "0.3"
 identity = { path = "../../crates/identity" }
+market-data = { path = "../../crates/market-data" }
 lapin = "2.5"
 rust_decimal = "1"
 serde = { version = "1", features = ["derive"] }
