@@ -36,7 +36,11 @@ fn default_min_commission() -> f64 {
 
 #[derive(Debug, Deserialize)]
 pub struct RunBacktestRequest {
-    dataset: String,
+    #[serde(alias = "dataset")]
+    dataset_id: String,
+    symbols: Vec<String>,
+    start_date: String,
+    end_date: String,
     initial_cash: f64,
     commission_rate: f64,
     slippage_rate: f64,
@@ -111,7 +115,10 @@ pub async fn create_backtest(
     .to_string();
 
     let config = BacktestJobConfig {
-        dataset: request.dataset.clone(),
+        dataset: request.dataset_id.clone(),
+        symbols: request.symbols.clone(),
+        start_date: request.start_date.clone(),
+        end_date: request.end_date.clone(),
         initial_cash: request.initial_cash,
         commission_rate: request.commission_rate,
         slippage_rate: request.slippage_rate,
@@ -135,7 +142,7 @@ pub async fn create_backtest(
             }
             BacktestApplicationError::DatasetNotFound(dataset) => api_error(
                 StatusCode::NOT_FOUND,
-                format!("找不到清洗后的数据集：{dataset}"),
+                format!("找不到 PostgreSQL 数据集：{dataset}"),
             ),
             BacktestApplicationError::DatasetCatalog(message)
             | BacktestApplicationError::Repository(message) => {
@@ -152,7 +159,7 @@ pub async fn create_backtest(
         StatusCode::ACCEPTED,
         Json(BacktestTaskResponse::queued(
             &task,
-            request.dataset,
+            request.dataset_id,
             strategy_name,
             short_window,
             long_window,
