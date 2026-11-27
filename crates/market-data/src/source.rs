@@ -74,14 +74,12 @@ impl CsvSource {
                     .ok_or_else(|| SourceError::InvalidResponse("CSV 行字段不完整".to_owned()))
             };
 
-            // Keep every CSV column, including fields not currently used by normalization.
+            // Preserve every source column, including fields not used by normalization.
             let raw_payload = Value::Object(
                 headers
                     .iter()
                     .zip(row.iter())
-                    .map(|(name, value)| {
-                        (name.to_owned(), Value::String(value.to_owned()))
-                    })
+                    .map(|(name, value)| (name.to_owned(), Value::String(value.to_owned())))
                     .collect::<Map<String, Value>>(),
             );
 
@@ -229,7 +227,7 @@ impl TushareSource {
                 .ok_or_else(|| SourceError::InvalidResponse("trade_date 无效".into()))?
                 .to_owned();
 
-            // Preserve all fields returned by Tushare, not only the normalized subset.
+            // Preserve every field returned by Tushare, not only the normalized subset.
             let raw_payload = Value::Object(
                 names
                     .iter()
@@ -282,7 +280,7 @@ impl MarketDataSource for TushareSource {
                 "start_date": Self::api_date(&request.start_date)?,
                 "end_date": Self::api_date(&request.end_date)?
             },
-            "fields": "ts_code,trade_date,open,high,low,close,vol,amount"
+            "fields": "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
         });
         let response = self
             .client
