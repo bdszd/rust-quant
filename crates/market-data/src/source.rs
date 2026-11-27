@@ -1,8 +1,10 @@
-use crate::domain::{AmountUnit, IngestionRequest, PriceUnit, RawDailyBar, VolumeUnit};
+use crate::domain::{
+    AmountUnit, DatasetSource, IngestionRequest, PriceUnit, RawDailyBar, VolumeUnit,
+};
 use async_trait::async_trait;
 use reqwest::Client;
 use rust_decimal::Decimal;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::{path::PathBuf, str::FromStr};
 use thiserror::Error;
 
@@ -32,6 +34,7 @@ pub trait MarketDataSource: Send + Sync {
 pub struct CsvSource {
     path: PathBuf,
 }
+
 impl CsvSource {
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
@@ -63,12 +66,25 @@ impl CsvSource {
         );
         let ai = headers.iter().position(|v| v == "amount");
         let mut output = Vec::new();
+
         for record in reader.records() {
             let row = record?;
             let get = |i: usize| {
                 row.get(i)
                     .ok_or_else(|| SourceError::InvalidResponse("CSV 行字段不完整".to_owned()))
             };
+
+            // Keep every CSV column, including fields not currently used by normalization.
+            let raw_payload = Value::Object(
+                headers
+                    .iter()
+                    .zip(row.iter())
+                    .map(|(name, value)| {
+                        (name.to_owned(), Value::String(value.to_owned()))
+                    })
+                    .collect::<Map<String, Value>>(),
+            );
+
             let amount = ai
                 .map(|i| get(i).and_then(|v| Self::decimal(v, "amount")))
                 .transpose()?;
@@ -84,11 +100,14 @@ impl CsvSource {
                 price_unit: PriceUnit::Cny,
                 volume_unit: VolumeUnit::Lots,
                 amount_unit: amount.map(|_| AmountUnit::ThousandCny),
+                source: DatasetSource::Csv,
+                raw_payload,
             });
         }
         Ok(output)
     }
 }
+
 #[async_trait]
 impl MarketDataSource for CsvSource {
     async fn fetch_daily_bars(
@@ -105,10 +124,12 @@ pub struct TushareSource {
     token: String,
     endpoint: String,
 }
+
 impl TushareSource {
     pub fn new(token: impl Into<String>) -> Result<Self, SourceError> {
         Self::with_endpoint(token, "https://api.tushare.pro")
     }
+
     pub fn with_endpoint(
         token: impl Into<String>,
         endpoint: impl Into<String>,
@@ -127,6 +148,7 @@ impl TushareSource {
             endpoint: endpoint.into(),
         })
     }
+
     fn api_date(value: &str) -> Result<String, SourceError> {
         let value = value.replace('-', "");
         if value.len() != 8 || !value.bytes().all(|b| b.is_ascii_digit()) {
@@ -134,6 +156,7 @@ impl TushareSource {
         }
         Ok(value)
     }
+
     fn decimal(value: &Value, field: &str) -> Result<Decimal, SourceError> {
         let text = match value {
             Value::String(v) => v.clone(),
@@ -144,8 +167,10 @@ impl TushareSource {
                 )));
             }
         };
-        Decimal::from_str(&text).map_err(|e| SourceError::InvalidResponse(format!("{field}: {e}")))
+        Decimal::from_str(&text)
+            .map_err(|e| SourceError::InvalidResponse(format!("{field}: {e}")))
     }
+
     fn parse(value: Value) -> Result<Vec<RawDailyBar>, SourceError> {
         let code = value.get("code").and_then(Value::as_i64).unwrap_or(-1);
         if code != 0 {
@@ -186,6 +211,7 @@ impl TushareSource {
             idx("amount")?,
         );
         let mut bars = Vec::new();
+
         for item in items {
             let row = item
                 .as_array()
@@ -202,6 +228,21 @@ impl TushareSource {
                 .as_str()
                 .ok_or_else(|| SourceError::InvalidResponse("trade_date 无效".into()))?
                 .to_owned();
+
+            // Preserve all fields returned by Tushare, not only the normalized subset.
+            let raw_payload = Value::Object(
+                names
+                    .iter()
+                    .enumerate()
+                    .map(|(index, name)| {
+                        (
+                            (*name).to_owned(),
+                            row.get(index).cloned().unwrap_or(Value::Null),
+                        )
+                    })
+                    .collect::<Map<String, Value>>(),
+            );
+
             bars.push(RawDailyBar {
                 symbol,
                 trade_date,
@@ -214,11 +255,14 @@ impl TushareSource {
                 price_unit: PriceUnit::Cny,
                 volume_unit: VolumeUnit::Lots,
                 amount_unit: Some(AmountUnit::ThousandCny),
+                source: DatasetSource::Tushare,
+                raw_payload,
             });
         }
         Ok(bars)
     }
 }
+
 #[async_trait]
 impl MarketDataSource for TushareSource {
     async fn fetch_daily_bars(
