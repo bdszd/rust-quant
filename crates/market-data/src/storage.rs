@@ -14,13 +14,13 @@ pub enum StorageError {
     InvalidData(String),
 }
 
-#[async_trait]
 pub struct DatasetInfo {
     pub id: String,
     pub name: String,
     pub rows: i64,
 }
 
+#[async_trait]
 pub trait MarketDataRepository: Send + Sync {
     async fn create_dataset(&self, request: &CreateDatasetRequest) -> Result<(), StorageError>;
 
@@ -78,6 +78,7 @@ impl MarketDataRepository for PostgresRepository {
             FROM market_datasets d
             LEFT JOIN market_daily_bars b ON b.dataset_id = d.id
             WHERE d.status = 'active'
+              AND d.owner_type = 'platform'
             GROUP BY d.id, d.name, d.created_at
             ORDER BY d.created_at DESC, d.id
             "#,
