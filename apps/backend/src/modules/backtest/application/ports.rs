@@ -109,8 +109,9 @@ pub trait BacktestExecutionRepository: Send + Sync {
 }
 
 /// 回测执行能力。Worker 只调用这个接口，不关心具体回测引擎、文件目录或指标实现。
+#[async_trait]
 pub trait BacktestExecutor: Send + Sync {
-    fn execute(
+    async fn execute(
         &self,
         task_id: Uuid,
         config: BacktestJobConfig,
