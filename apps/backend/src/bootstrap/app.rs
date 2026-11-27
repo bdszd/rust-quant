@@ -1,4 +1,4 @@
-use std::{env, path::PathBuf, sync::Arc};
+use std::{env, sync::Arc};
 
 use identity::auth::{AuthenticationService, RegistrationService};
 use tokio::sync::watch;
@@ -26,7 +26,6 @@ use crate::{
         dataset::{
             application::DatasetApplicationService,
             infrastructure::{
-                filesystem_catalog::FilesystemDatasetCatalog,
                 postgres_catalog::PgDatasetCatalog,
             },
         },
@@ -49,16 +48,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let run_migrations = parse_bool_env("RUST_QUANT_RUN_MIGRATIONS", true)?;
     let migrate_only = parse_bool_env("RUST_QUANT_MIGRATE_ONLY", false)?;
 
-    let data_dir = env::var_os("RUST_QUANT_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../..")
-                .join("data")
-                .join("cleaned")
-                .join("tushare")
-        });
-    std::fs::create_dir_all(&data_dir)?;
 
     let database_url = env::var("DATABASE_URL").expect(
         "必须设置 DATABASE_URL，例如 postgres://postgres:postgres@localhost:5433/rust_quant",
@@ -94,19 +83,17 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let market_data_repository: Arc<dyn market_data::MarketDataRepository> =
         Arc::new(market_data::PostgresRepository::new(db.clone()));
-    let dataset_catalog = Arc::new(PgDatasetCatalog::new(market_data_repository));
-    let legacy_dataset_existence =
-        Arc::new(FilesystemDatasetCatalog::new(data_dir.clone()));
+    let dataset_catalog = Arc::new(PgDatasetCatalog::new(market_data_repository.clone()));
 
     let backtest = Arc::new(BacktestApplicationService::new(
         application_repository,
-        legacy_dataset_existence,
+        market_data_repository.clone(),
     ));
     let datasets = Arc::new(DatasetApplicationService::new(dataset_catalog));
 
     let metrics = Arc::new(Metrics::new(worker_count));
     let worker_executor: Arc<dyn BacktestExecutor> =
-        Arc::new(BacktestCoreExecutor::new(data_dir, metrics.clone()));
+        Arc::new(BacktestCoreExecutor::new(market_data_repository, metrics.clone()));
     let authentication = AuthenticationService::new(db.clone());
     let registration = RegistrationService::new(db.clone());
     let login_rate_limiter = LoginRateLimiter::new(db.clone());
