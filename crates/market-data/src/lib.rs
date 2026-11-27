@@ -11,4 +11,4 @@ pub use domain::{
 };
 pub use service::{MarketDataError, MarketDataService};
 pub use source::{CsvSource, MarketDataSource, TushareSource};
-pub use storage::{MarketDataRepository, PostgresRepository};
+pub use storage::{DatasetInfo, MarketDataRepository, PostgresRepository};
