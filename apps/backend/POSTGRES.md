@@ -32,28 +32,11 @@ export AMQP_ADDR='amqp://rust_quant:rust_quant_dev@localhost:5673/%2f'
 
 The application reads environment variables directly; it does not automatically load a .env file.
 
-Optional data directory override:
+Market data is read from PostgreSQL. The API dataset identifier is the UUID in `market_datasets.id`; `/api/datasets` returns the UUID, display name, and stored daily-bar count.
 
-\`\`\`bash
-export RUST_QUANT_DATA_DIR="$PWD/data/cleaned"
-\`\`\`
+## 3. Backtest market-data selection
 
-By default, the backend reads cleaned datasets from `data/cleaned/tushare`. The directory can be overridden with `RUST_QUANT_DATA_DIR`.
-
-## 3. Cleaned dataset layout
-
-Each dataset uses this layout:
-
-\`\`\`text
-data/cleaned/tushare/
-└── 000001.SZ/
-    └── 20240101_20241231/
-        ├── bars.csv
-        ├── rejected.csv
-        └── quality_report.json
-\`\`\`
-
-The API dataset identifier is \`000001.SZ/20240101_20241231\`. The API reads \`accepted_rows\` from \`quality_report.json\`; it does not load the CSV to calculate row counts.
+The backtest request supplies the dataset UUID, symbol, and inclusive date range. The executor queries `market_daily_bars` by those values, converts the returned database rows into `backtest_core::Bar`, then runs the CPU-bound engine calculation on a blocking thread. No CSV directory or local market-data file is used by the Backend backtest path.
 
 ## 4. Run the backend
 
@@ -92,7 +75,7 @@ RUST_QUANT_DB_MAX_CONNECTIONS=10
 
 The second instance uses a different `RUST_QUANT_INSTANCE_ID`. Both instances connect to the same PostgreSQL database and RabbitMQ queue. RabbitMQ distributes messages among their consumers. The total PostgreSQL connection budget must account for all instances (for example, 3 instances × 10 connections = up to 30 connections).
 
-These settings prepare the process and task execution layer for multiple instances. They do not yet make the cleaned CSV dataset directory shared: all instances must currently see equivalent dataset files at the configured path. Shared dataset storage and the full multi-instance data flow are intentionally deferred.
+These settings prepare the process and task execution layer for multiple instances. All instances read the same PostgreSQL market-data tables; no shared filesystem dataset directory is required.
 
 ## 6. Task delivery flow
 
@@ -102,7 +85,7 @@ These settings prepare the process and task execution layer for multiple instanc
 4. Publisher Confirm allows the Outbox row to be marked published.
 5. Worker consumes the message and atomically claims the task and creates an execution Attempt.
 6. Worker periodically renews the Attempt lease while Backtest Core is running.
-7. The executor loads the cleaned CSV dataset, validates its bars, and runs the selected strategy.
+7. The executor asynchronously queries PostgreSQL for the selected dataset, symbol, and date range, converts the returned rows into engine Bars, validates them, and runs the selected strategy.
 8. Worker persists the result (or failure), Attempt status, and Task status in a database transaction.
 9. Worker ACKs the RabbitMQ delivery only after the final state is persisted.
 
