@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::modules::dataset::application::ports::DatasetCatalog;
+use crate::modules::dataset::application::ports::DatasetExistence;
 
 use crate::modules::backtest::domain::{
     BacktestJob, BacktestJobConfig, BacktestTask, StrategyConfig, TaskStatus,
@@ -18,11 +18,11 @@ use super::{
 /// 该服务本身不依赖 Axum、SQLx 或 RabbitMQ。
 pub struct BacktestApplicationService {
     repository: Arc<dyn BacktestRepository>,
-    datasets: Arc<dyn DatasetCatalog>,
+    datasets: Arc<dyn DatasetExistence>,
 }
 
 impl BacktestApplicationService {
-    pub fn new(repository: Arc<dyn BacktestRepository>, datasets: Arc<dyn DatasetCatalog>) -> Self {
+    pub fn new(repository: Arc<dyn BacktestRepository>, datasets: Arc<dyn DatasetExistence>) -> Self {
         Self {
             repository,
             datasets,
